@@ -80,7 +80,7 @@ class BlackScholesModel():
             
         return None
     
-    def get_current_optimal_hs(self):
+    def get_current_optimal_hs(self, *args):
         return self.get_optimal_hs(self.time, self.spot)
     
 if __name__ == "__main__":

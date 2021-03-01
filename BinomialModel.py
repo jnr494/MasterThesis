@@ -101,7 +101,7 @@ class Binom_model():
             
         return np.array(hs)
     
-    def get_current_optimal_hs(self):
+    def get_current_optimal_hs(self, *args):
         return self.get_optimal_hs(self.time, self.spot)
     
 class Optimal_hedge():
@@ -139,51 +139,7 @@ class Optimal_hedge():
         
         return self.price[0,0]
     
-# =============================================================================
-# class Portfolio():
-#     def __init__(self, init_hs, init_value, model, transaction_cost = 0):
-#         self.model = model
-#         
-#         self.n = self.model.n
-#         
-#         self.pf_value = np.ones(self.n) * init_value
-#         
-#         self.hs_hist = np.zeros((self.n,1))
-#         self.hb_hist = np.zeros((self.n,1))
-#         self.pf_value_hist = np.zeros((self.n,1))
-#         
-#         self.transaction_cost = transaction_cost
-#         self.tc_hist = np.zeros((self.n,1))
-#         
-#         self.hs = np.ones(self.n) * init_hs
-#         self.rebalance(self.hs)
-#         self.update_pf_value()
-#         
-#         #Remove zeros from hs_hist, hb_hist and pf_hist
-#         self.hs_hist = self.hs_hist[:,1:]
-#         self.hb_hist = self.hb_hist[:,1:]
-#         self.pf_value_hist = self.pf_value_hist[:,1:]
-#         self.tc_hist = self.tc_hist[:,1:]
-#         
-#     def rebalance(self, new_hs):
-#         hs_change = abs(self.hs - new_hs)
-#         tmp_tc = hs_change * self.model.spot * self.transaction_cost
-#         self.tc_hist = np.append(self.tc_hist, tmp_tc[:,np.newaxis], 1)
-#         
-#         self.hs = new_hs
-#         self.hb = (self.pf_value - self.hs * self.model.spot - tmp_tc) / self.model.bank
-#         
-#         
-#         self.hs_hist = np.append(self.hs_hist, self.hs[:,np.newaxis], 1)
-#         self.hb_hist = np.append(self.hb_hist, self.hb[:,np.newaxis], 1)
-#         
-#     def update_pf_value(self):
-#         self.pf_value = self.hs * self.model.spot + self.hb * self.model.bank
-#         
-#         self.pf_value_hist = np.append(self.pf_value_hist, self.pf_value[:,np.newaxis], 1)
-# =============================================================================
-    
-    
+
 if __name__ == "__main__":
     model = Binom_model(1, 0.055, 0.2, 0.035, 0.6, 1/10, n= 10)
     model.optimal_hedge_setup(1)
@@ -205,22 +161,4 @@ if __name__ == "__main__":
         print(model.get_current_optimal_hs())
         port.update_pf_value()
         port.rebalance(np.ones(10) * 0.5)
-        
-# =============================================================================
-#     opt_hedge = Optimal_hedge(2, model)
-#     
-#     option = lambda spot: max([spot - 105,0])
-#     option_payoffs = [option(100*opt_hedge.u**(opt_hedge.n-i) * opt_hedge.d**(i)) for i in range(opt_hedge.n+1)]
-#     opt_hedge.calculate_hedge_price(option_payoffs)
-#     
-#     por = Portfolio(opt_hedge.hs[0,0],opt_hedge.price[0,0],model)
-#     
-#     for i in range(0,opt_hedge.n):
-#         model.evolve_s_b()
-#         por.update_pf_value()
-#         por.rebalance(opt_hedge.hs[model.no_d, i+1])
-#     
-#     print("Option payoff:",option(model.spot))
-#     print("Por value:",por.pf_value)
-#     print("Hedge error:", por.pf_value - option(model.spot) )
-# =============================================================================
+

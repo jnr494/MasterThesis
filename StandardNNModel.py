@@ -7,7 +7,7 @@ Created on Tue Feb 16 18:42:39 2021
 
 import numpy as np
 from tensorflow import keras
-from tensorflow.keras.layers import Dense, Lambda, Input, BatchNormalization
+from tensorflow.keras.layers import Dense, Lambda, Input, BatchNormalization, Activation
 from tensorflow.keras import Sequential
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import LearningRateScheduler, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
@@ -73,9 +73,15 @@ def create_input_layers(n):
         
 
 class NN_simple_hedge():
-    def __init__(self, input_dim, n_layers, n_units, activation = 'elu', final_activation = None):
+    def __init__(self, input_dim, base_output_dim, base_n_layers, base_n_units, 
+                 n_layers, n_units, activation = 'elu', final_activation = None):
         self.input_dim = input_dim 
         self.output_dim = 1
+        
+        self.base_output_dim = base_output_dim
+        self.base_n_layers = base_n_layers
+        self.base_n_units = base_n_units
+        
         self.n_layers = n_layers
         self.n_units = n_units 
         self.activation = activation
@@ -85,26 +91,61 @@ class NN_simple_hedge():
         self.m_x = 0
         self.s_x = 1
 
+        self.create_submodel_calls = 0
 
-    def create_submodel(self, input_dim, output_dim, n_layers, n_units, activation, final_activation = None):
-        submodel = Sequential()
-        submodel.add(Input(shape = (input_dim,)))
+    def create_submodel(self, input_dim, output_dim,
+                        base_output_dim, base_n_layers, base_n_units, 
+                        n_layers, n_units, 
+                        activation, final_activation = None):
         
-        #submodel.add(BatchNormalization())
-        submodel.add(Dense(n_units, activation = activation)) #, input_dim = input_dim
-        #submodel.add(BatchNormalization())
-        for _ in range(n_layers-1):
-            submodel.add(Dense(n_units, activation = activation))
-       #     submodel.add(BatchNormalization())
-            
-        submodel.add(Dense(output_dim, activation = final_activation))
+        if self.create_submodel_calls == 0:
+            self.base_submodel = Sequential()
+            self.base_submodel.add(Dense(n_units, activation = activation, input_dim = input_dim))
+            for _ in range(base_n_layers-1):
+                self.base_submodel.add(Dense(base_n_units, activation = activation)) 
+            self.base_submodel.add(Dense(base_output_dim, activation = activation))
+            self.base_submodel.summary()
+                    
+        inputs = Input(shape = (base_output_dim,))
+        x = Dense(n_units, activation = activation)(inputs)
+        for _ in range(n_layers - 1):
+            x = Dense(n_units, activation = activation)(x)
+        
+        x = Dense(output_dim, activation = final_activation)(x)
+        
+        submodel = Model(inputs = inputs, outputs = x)
         submodel.summary()
+        
         optimizer = keras.optimizers.Adam(learning_rate=0.01)
         submodel.compile(optimizer = optimizer, loss = 'mean_squared_error')
+        
+        self.create_submodel_calls += 1
+        
         return submodel
+        
+# =============================================================================
+#         submodel = Sequential()
+#         submodel.add(Input(shape = (input_dim,)))
+#         
+#         #submodel.add(BatchNormalization())
+#         submodel.add(Dense(n_units, activation = activation)) #, input_dim = input_dim
+#         #submodel.add(BatchNormalization())
+#         for _ in range(n_layers-1):
+#             submodel.add(Dense(n_units, activation = activation))
+#        #     submodel.add(BatchNormalization())  
+#         submodel.add(Dense(output_dim, activation = final_activation))
+#         
+#         inputs = Input(shape = (input_dim,))
+#         
+#         submodel.summary()
+#         optimizer = keras.optimizers.Adam(learning_rate=0.01)
+#         submodel.compile(optimizer = optimizer, loss = 'mean_squared_error')
+#         
+#         return submodel
+# =============================================================================
     
     def create_model(self, n, rate, dt, init_pf = None, transaction_costs = 0, 
-                     mult_submodels = True, n_pr_submodel = 1, ignore_rates = False):
+                     ignore_rates = False):
         self.n = n
         self.T = n * dt
         self.transaction_costs = transaction_costs
@@ -116,24 +157,17 @@ class NN_simple_hedge():
             self.ignore_rates = 1
         
         #init hs
-        init_hs_comp = constmodel(self.input_dim, self.output_dim)
+        init_hs_comp = constmodel(self.base_output_dim, self.output_dim)
         
-        if mult_submodels is True:
-            self.submodel = [init_hs_comp]
-            n_submodels = int((n-1) / n_pr_submodel)
-            for i in range(n_submodels):
-                tmp_model = self.create_submodel(self.input_dim, self.output_dim, self.n_layers, 
-                                                 self.n_units, self.activation, self.final_activation)
-                for j in range(n_pr_submodel):
-                    self.submodel.append(tmp_model) 
-                
-            while len(self.submodel) < n:
-                print("n and n_submodels does not fit")
-                self.submodel.append(self.submodel[-1])
-                
-        elif mult_submodels == False:
-            self.submodel = [init_hs_comp] + (n-1) * [self.create_submodel(self.input_dim, self.output_dim, self.n_layers, 
-                                                                           self.n_units, self.activation, self.final_activation)]
+        self.submodel = [init_hs_comp]
+        for i in range(n -1):
+            tmp_model = self.create_submodel(self.input_dim, self.output_dim,
+                                             self.base_output_dim, self.base_n_layers, self.base_n_units,
+                                             self.n_layers, self.n_units, 
+                                             self.activation, self.final_activation)
+            self.submodel.append(tmp_model) 
+            
+
   
         #Inputs        
         spots, rates, bank_T, option_payoff, inputs = create_input_layers(self.n)
@@ -167,7 +201,7 @@ class NN_simple_hedge():
                          dummy_zeros, #Current hs
                          tf.identity(dummy_ones) * (tf.math.log(self.T - time + 1))], 1) #Log("Time to maturity" + 1)
 
-        hs_0 = self.submodel[time_idx](I1_0)
+        hs_0 = self.submodel[time_idx](self.base_submodel(I1_0))
         
         tc_0 = tf.math.abs(hs_0) * spots[0] * self.transaction_costs
         pf_1 = hs_0 * (spots[1] - spots[0] * R) + R * (init_pf - tc_0)
@@ -186,10 +220,11 @@ class NN_simple_hedge():
                                     hs[-1], #Current hs
                                     tf.identity(dummy_ones)  * (tf.log(self.T - time + 1))], 1) #Log("Time to maturity" + 1)
                 
-                tmp_hs = self.submodel[time_idx](tmp_I1)
+                tmp_hs = self.submodel[time_idx](self.base_submodel(tmp_I1))
 
                 tmp_tc = tf.math.abs(tmp_hs - hs[-1]) * spots[i] * self.transaction_costs
-                tmp_pf = tmp_hs * (spots[i+1] - spots[i] * R) + R * (pf[-1] - tmp_tc)
+                #tmp_pf = tmp_hs * (spots[i+1] - spots[i] * R) + R * (pf[-1] - tmp_tc)
+                tmp_pf = tmp_hs * (spots[i+1] - spots[i]) + R * (pf[-1] - tmp_tc)
                 
                 time += dt
                 time_idx = int(np.round(time / self.T * self.n, 6))
@@ -206,7 +241,7 @@ class NN_simple_hedge():
         
         #Model for training
         self.model = Model(inputs = inputs, outputs = total_pf)
-        #self.model.summary()
+        self.model.summary()
         self.compile_model()
         
         return self.model
@@ -222,6 +257,7 @@ class NN_simple_hedge():
         rm_output = tf.concat([J,w], 1)
         self.model_rm = Model(inputs = inputs, outputs = rm_output)
         self.model_rm.compile(optimizer = "adam", loss = rm_loss)
+        
     
     def compile_rm_w_target_loss(self):
         self.model_rm.compile(optimizer = "adam", loss = rm_target_loss)
@@ -292,7 +328,7 @@ class NN_simple_hedge():
         
         return rm_outputs[0,1] + np.mean(rm_outputs[:,0])
     
-    def train_rm_model(self, x, epochs = 1, batch_size = 32, lr = 0.01, best_model_name = "best_model.hdf5", reduce_lr = False):  
+    def train_rm_model(self, x, epochs = 1, batch_size = 32, lr = 0.01, best_model_name = "best_model_rm.hdf5", reduce_lr = False):  
         temp_CLR = lambda epoch:lr
         lr_schd = LearningRateScheduler(temp_CLR)
         mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
@@ -306,22 +342,33 @@ class NN_simple_hedge():
         y = np.ones(shape = (len(x[0][:,0]), 2))
         tf.keras.backend.set_value(self.model_rm.optimizer.learning_rate, lr)
         self.model_rm.fit(x, y, epochs = epochs, verbose = 2, callbacks = callbacks)
-        self.model_rm.load_weights("best_model.hdf5")
+        self.model_rm.load_weights("best_model_rm.hdf5")
         
-    def get_hs(self, x):
-        time = x[0,-1]
+    def get_hs(self, time, hs, spot_tilde, rate):
         time_idx = int(np.round(time / self.T * self.n, 6))
         
-        new_x = copy.deepcopy(x)
+        if type(time) == int or type(time) == float:
+            time = np.ones_like(hs) * float(time)
+    
+        #x = np.column_stack([spot_tilde, rate, hs,time])
         
-        log_spot = np.log(x[:,0] + 1)
-        log_timetomat = np.log(self.T - x[:,-1] + 1)
         
-        new_x[:,0] = log_spot
-        new_x[:,-1] = log_timetomat
-        new_x[:,1] = x[:,1] * self.ignore_rates
+        #new_x = copy.deepcopy(x)
         
-        return self.submodel[time_idx].predict(new_x)
+        log_spot = np.log(spot_tilde + 1)
+        log_timetomat = np.log(self.T - time + 1)
+        
+        #new_x[:,0] = log_spot
+        #new_x[:,-1] = log_timetomat
+        #new_x[:,1] = x[:,1] * self.ignore_rates
+        
+        new_x = np.column_stack([log_spot, rate * self.ignore_rates, hs,log_timetomat])
+        
+        return np.squeeze(self.submodel[time_idx].predict(self.base_submodel.predict(new_x)))
+    
+    def get_current_optimal_hs(self, model, current_hs):
+        return self.get_hs(model.time, current_hs, model.spot / model.bank, model.rate)
+        
     
     def get_init_pf(self):
         return self.model_full.predict([np.zeros((1,1)) for j in range(2 * self.n + 3)])[-1][0,0]
