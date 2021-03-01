@@ -162,10 +162,10 @@ class NN_simple_hedge():
             init_pf = init_pf * dummy_ones
                 
         #Computations        
-        I1_0 = tf.concat([tf.log(spots[0] + 1), #log("Spots" +1)
+        I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
                          rates[0] * self.ignore_rates, #Current rates
                          dummy_zeros, #Current hs
-                         tf.identity(dummy_ones) * (tf.log(self.T - time + 1))], 1) #Log("Time to maturity" + 1)
+                         tf.identity(dummy_ones) * (tf.math.log(self.T - time + 1))], 1) #Log("Time to maturity" + 1)
 
         hs_0 = self.submodel[time_idx](I1_0)
         

@@ -10,65 +10,88 @@ import matplotlib.pyplot as plt
 
 import BinomialModel
 import StandardNNModel
+import PortfolioClass
 
-n = 10
+n = 3
 rate = 0.05
-rate_change = 0.05 #- rate * 2 / n
+rate_change = 0
 T = 1
-tc = 0.00 #transaction cost
+tc = 0.005 #transaction cost
 
 
 #Create binomial model
 S0 = 1
-bin_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, 1/n, rate_change)
+s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, 1/n, rate_change)
 
 
 #Create sample paths 
 N = 12
 n_samples = 2**N
 
-spots = np.zeros((n_samples, n+1))
-banks = np.zeros_like(spots)
-rates = np.zeros_like(spots)
+s_model.reset_model(n_samples)
+for j in range(n):
+    s_model.evolve_s_b()
 
-for i in range(n_samples):
-    bin_model.reset_model()
-    
-    spots[i,0] = bin_model.spot
-    banks[i,0] = bin_model.bank
-    rates[i,0] = bin_model.rate
-    
-    for j in range(n):
-        bin_model.evolve_s_b()
-        spots[i,j+1] = bin_model.spot
-        banks[i,j+1] = bin_model.bank
-        rates[i,j+1] = bin_model.rate
+spots = s_model.spot_hist
+banks = s_model.bank_hist
+rates = s_model.rate_hist
+
+# =============================================================================
+# spots = np.zeros((n_samples, n+1))
+# banks = np.zeros_like(spots)
+# rates = np.zeros_like(spots)
+# 
+# for i in range(n_samples):
+#     bin_model.reset_model()
+#     
+#     spots[i,0] = bin_model.spot
+#     banks[i,0] = bin_model.bank
+#     rates[i,0] = bin_model.rate
+#     
+#     for j in range(n):
+#         bin_model.evolve_s_b()
+#         spots[i,j+1] = bin_model.spot
+#         banks[i,j+1] = bin_model.bank
+#         rates[i,j+1] = bin_model.rate
+# =============================================================================
 
 spots_tilde = spots / banks
 
 #Option
 strike = 1
 
-option = lambda spot: max([spot - strike,0])
+#option = lambda spot: max([spot - strike,0])
+option = lambda spots: np.maximum(spots - strike,0)
 #option = lambda spot: 0
 
-opt_hedge = BinomialModel.Optimal_hedge(T, bin_model)
-tmp_option_payoffs = [option(S0*opt_hedge.u**(opt_hedge.n-i) * opt_hedge.d**(i)) for i in range(opt_hedge.n+1)]
-opt_hedge.calculate_hedge_price(tmp_option_payoffs)
+# =============================================================================
+# opt_hedge = BinomialModel.Optimal_hedge(T, model)
+# tmp_option_payoffs = [option(S0*opt_hedge.u**(opt_hedge.n-i) * opt_hedge.d**(i)) for i in range(opt_hedge.n+1)]
+# opt_hedge.calculate_hedge_price(tmp_option_payoffs)
+# option_price = opt_hedge.price[0,0]
+# =============================================================================
 
-option_price = opt_hedge.price[0,0]
+# =============================================================================
+# s_model.optimal_hedge_setup(T)
+# tmp_option_payoffs = [option(S0*s_model.optimal_hedge.u**(s_model.optimal_hedge.n-i) * s_model.optimal_hedge.d**(i)) 
+#                       for i in range(s_model.optimal_hedge.n+1)]
+# option_price = s_model.optimal_hedge.calculate_hedge_price(tmp_option_payoffs)
+# =============================================================================
+
+option_price = s_model.init_option("call", [strike,T])
 
 #Get option payoffs from samples
-option_payoffs = np.array([option(spot) for spot in spots[:,-1]])
+option_payoffs = option(spots[:,-1])
 
 #Setup x and y
 x = [spots_tilde[:,i:(i+1)]  for i in range(n+1)] \
     + [rates[:,i:(i+1)]  for i in range(n)] \
     + [banks[:,-1:],option_payoffs[:,np.newaxis]]
+    
 y = np.zeros(shape = (n_samples,1))
 
 #Create NN model
-model = StandardNNModel.NN_simple_hedge(input_dim = 4,n_layers = 4, n_units = 5, 
+model = StandardNNModel.NN_simple_hedge(input_dim = 4, n_layers = 4, n_units = 5, 
                                         activation = 'elu', final_activation = 'sigmoid')
 model.create_model(n, rate = 0, dt = T / n, mult_submodels = True, n_pr_submodel = 1, 
                    transaction_costs = tc, init_pf = 0, ignore_rates = True) #option_price
@@ -95,7 +118,7 @@ print(int(np.sum([tf.keras.backend.count_params(p) for p in set(model.model_rm.t
 
 
 #model.compile_rm_w_target_loss()
-for epochs, lr in zip([50,100,100,100],[1e-2, 1e-3, 1e-4, 1e-5]):
+for epochs, lr in zip([50,50,50,50],[1e-2, 1e-3, 1e-4, 1e-5]):
     print(epochs,lr)
     model.train_rm_model(x, epochs, batch_size = 256, lr = lr)
 
@@ -137,6 +160,8 @@ def binary_search(func,a,b, delta = 1e-6):
         m = (b-a) / 2 + a
         f_m = func(m)
         
+        #print(a,b,m,f_m)
+        
         if f_m < 0:
             b = m
         else:
@@ -146,29 +171,35 @@ def binary_search(func,a,b, delta = 1e-6):
         
     return (b-a)/2 + a
     
-init_pf_nn2 = binary_search(cvar_from_p0,init_pf_nn * 0, init_pf_nn * 2, delta = 1e-8)
+init_pf_nn2 = model.get_init_pf() + binary_search(cvar_from_p0,init_pf_nn * 0, init_pf_nn * 2, delta = 1e-6)
 
 print("init_pf1:",init_pf_nn)
 print("init_pf2:",init_pf_nn2)
 
 anal_price = option_price
 
-init_pf = init_pf_nn2
+init_pf = 0 #init_pf_nn2
 
 
 def calculate_hs(time, hs, spot_tilde, rate):
-    tmp_x = np.array([[spot_tilde, rate, hs,time]])
-    #print(tmp_x)
-    return model.get_hs(tmp_x)[0,0]
+    if type(time) == int or type(time) == float:
+        time = np.ones_like(hs) * float(time)
+    
+    tmp_x = np.column_stack([spot_tilde, rate, hs,time])
+    #print(tmp_x,tmp_x.shape)
+    return np.squeeze(model.get_hs(tmp_x))
 
-def calculate_hs_anal(time, spot):
-    time_idx = int(np.round(time / T * n , 6))
-    spot_place = np.argmax(abs(opt_hedge.St[:,time_idx] - spot) <= 1e-6)
-    if np.count_nonzero(abs(opt_hedge.St[:,time_idx] - spot) <= 1e-6) != 1:
-        print("FUCK", time, spot, time_idx)
-    return opt_hedge.hs[spot_place,time_idx]
+# =============================================================================
+# def calculate_hs_anal(time, spot):
+#     time_idx = int(np.round(time / T * n , 6))
+#     spot_place = np.argmax(abs(opt_hedge.St[:,time_idx] - spot) <= 1e-6)
+#     if np.count_nonzero(abs(opt_hedge.St[:,time_idx] - spot) <= 1e-6) != 1:
+#         print("FUCK", time, spot, time_idx)
+#     return opt_hedge.hs[spot_place,time_idx]
+# =============================================================================
 
-N_hedge_samples = 2000
+ 
+N_hedge_samples = 20000
 pf_values = []
 pf_anal_values = []
 hedge_spots = []
@@ -178,38 +209,68 @@ option_values = []
 hs_matrix = np.zeros((N_hedge_samples,n))
 hs_anal_matrix = np.zeros_like(hs_matrix)
 
-for h in range(N_hedge_samples):
-    bin_model.reset_model()
-    port_nn = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
-    port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
+s_model.reset_model(N_hedge_samples)
+
+port_nn = PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc)
+port_nn.rebalance(calculate_hs(s_model.time, port_nn.hs, s_model.spot / s_model.bank, s_model.rate))
+
+port_anal = PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc)
+port_anal.rebalance(s_model.get_current_optimal_hs())
+
+for i in range(n):
+    #Save hs and time
+    hs_matrix[:,i] = port_nn.hs
+    hs_anal_matrix[:,i] = port_anal.hs
     
-    port_anal = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
-    port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
-    
-    for i in range(n):
-        #Save hs and time
-        hs_matrix[h,i] = port_nn.hs
-        hs_anal_matrix[h,i] = port_anal.hs
-        
-        #
-        bin_model.evolve_s_b()
-        port_nn.update_pf_value()
-        port_anal.update_pf_value()
-        if i < n - 1:
-            port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
-            port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
-        
-        #Save hs
-        
-    pf_values.append(port_nn.pf_value)
-    pf_anal_values.append(port_anal.pf_value)
-    
-    hedge_spots.append(bin_model.spot)
-    option_values.append(option(bin_model.spot))
+    #
+    s_model.evolve_s_b()
+    port_nn.update_pf_value()
+    port_anal.update_pf_value()
+    if i < n - 1:
+        port_nn.rebalance(calculate_hs(s_model.time, port_nn.hs, s_model.spot / s_model.bank, s_model.rate))
+        port_anal.rebalance(s_model.get_current_optimal_hs())
+
+pf_values = port_nn.pf_value
+pf_anal_values = port_anal.pf_value
+
+hedge_spots = s_model.spot
+option_values = option(hedge_spots)
+
+# =============================================================================
+# for h in range(N_hedge_samples):
+#     bin_model.reset_model()
+#     port_nn = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
+#     port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
+#     
+#     port_anal = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
+#     port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
+#     
+#     for i in range(n):
+#         #Save hs and time
+#         hs_matrix[h,i] = port_nn.hs
+#         hs_anal_matrix[h,i] = port_anal.hs
+#         
+#         #
+#         bin_model.evolve_s_b()
+#         port_nn.update_pf_value()
+#         port_anal.update_pf_value()
+#         if i < n - 1:
+#             port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
+#             port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
+#         
+#         #Save hs
+#         
+#     pf_values.append(port_nn.pf_value)
+#     pf_anal_values.append(port_anal.pf_value)
+#     
+#     hedge_spots.append(bin_model.spot)
+#     option_values.append(option(bin_model.spot))
+# 
+# =============================================================================
 
 #Plot of hedge accuracy
 tmp_xs = np.linspace(0.5*S0,2*S0)
-tmp_option_values = [option(i) for i in tmp_xs]
+tmp_option_values = option(tmp_xs)
 plt.plot(tmp_xs, tmp_option_values)
 plt.scatter(hedge_spots,pf_values, color = 'black', s = 2)
 plt.show()
@@ -268,7 +329,7 @@ plt.plot(rate * np.linspace(0.5,2,200),[calculate_hs(0.8,0.5,1, rate * x) for x 
 plt.show()
 
 #Plot pnls on bar chart
-plt.hist([Pnl,Pnl_anal], bins = 10, histtype='bar', label=['NN','Anal'])
+plt.hist([Pnl,Pnl_anal], bins = 40, histtype='bar', label=['NN','Anal'])
 plt.title('Out of sample Pnl distribution')
 plt.legend()
 plt.show()
@@ -281,3 +342,4 @@ print('NN Out of sample CVAR:',nn_cvar)
 anal_loss = - Pnl_anal
 anal_cvar = np.mean(anal_loss[np.quantile(anal_loss, alpha) <= anal_loss])
 print('Anal Out of sample CVAR:',anal_cvar)
+
