@@ -9,19 +9,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import BinomialModel
+import BlackScholesModel
+
 import StandardNNModel
 import PortfolioClass
 
-n = 3
-rate = 0.05
+
+n = 10
+rate = 0.02
 rate_change = 0
 T = 1
-tc = 0.005 #transaction cost
+tc = 0.01 #transaction cost
 
 
 #Create binomial model
 S0 = 1
-s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, 1/n, rate_change)
+#s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, T/n, rate_change)
+s_model = BlackScholesModel.BlackScholesModel(S0, 0.03, 0.2, rate, T / n)
 
 
 #Create sample paths 
@@ -118,7 +122,7 @@ print(int(np.sum([tf.keras.backend.count_params(p) for p in set(model.model_rm.t
 
 
 #model.compile_rm_w_target_loss()
-for epochs, lr in zip([50,50,50,50],[1e-2, 1e-3, 1e-4, 1e-5]):
+for epochs, lr in zip([50,100,100,100],[1e-2, 1e-3, 1e-4, 1e-5]):
     print(epochs,lr)
     model.train_rm_model(x, epochs, batch_size = 256, lr = lr)
 
@@ -178,7 +182,9 @@ print("init_pf2:",init_pf_nn2)
 
 anal_price = option_price
 
-init_pf = 0 #init_pf_nn2
+
+
+init_pf = init_pf_nn2
 
 
 def calculate_hs(time, hs, spot_tilde, rate):
@@ -199,7 +205,7 @@ def calculate_hs(time, hs, spot_tilde, rate):
 # =============================================================================
 
  
-N_hedge_samples = 20000
+N_hedge_samples = 5000
 pf_values = []
 pf_anal_values = []
 hedge_spots = []
@@ -235,38 +241,6 @@ pf_anal_values = port_anal.pf_value
 
 hedge_spots = s_model.spot
 option_values = option(hedge_spots)
-
-# =============================================================================
-# for h in range(N_hedge_samples):
-#     bin_model.reset_model()
-#     port_nn = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
-#     port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
-#     
-#     port_anal = BinomialModel.Portfolio(0, init_pf, bin_model, transaction_cost = tc)
-#     port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
-#     
-#     for i in range(n):
-#         #Save hs and time
-#         hs_matrix[h,i] = port_nn.hs
-#         hs_anal_matrix[h,i] = port_anal.hs
-#         
-#         #
-#         bin_model.evolve_s_b()
-#         port_nn.update_pf_value()
-#         port_anal.update_pf_value()
-#         if i < n - 1:
-#             port_nn.rebalance(calculate_hs(bin_model.time, port_nn.hs, bin_model.spot / bin_model.bank, bin_model.rate))
-#             port_anal.rebalance(calculate_hs_anal(bin_model.time, bin_model.spot))
-#         
-#         #Save hs
-#         
-#     pf_values.append(port_nn.pf_value)
-#     pf_anal_values.append(port_anal.pf_value)
-#     
-#     hedge_spots.append(bin_model.spot)
-#     option_values.append(option(bin_model.spot))
-# 
-# =============================================================================
 
 #Plot of hedge accuracy
 tmp_xs = np.linspace(0.5*S0,2*S0)
@@ -322,10 +296,14 @@ plt.legend()
 plt.title("Worst Anal Pnl")
 plt.show()
 
-plt.plot(np.arange(60,120)/100,[calculate_hs(0.8,0.5,x/100, rate) for x in np.arange(60,120)])
+plt.plot(np.arange(60,120)/100,[calculate_hs(0.8*T,0.5,x/100, rate) for x in np.arange(60,120)], 
+         color = "orange", label = "NN hs")
+plt.plot(np.arange(60,120)/100,[s_model.get_optimal_hs(0.8*T,x/100) for x in np.arange(60,120)],
+         label = "Anal hs")
+plt.legend()
 plt.show()
 
-plt.plot(rate * np.linspace(0.5,2,200),[calculate_hs(0.8,0.5,1, rate * x) for x in np.linspace(0.5,2,200)])
+plt.plot(rate * np.linspace(0.5,2,200),[calculate_hs(0.8*T,0.5,1, rate * x) for x in np.linspace(0.5,2,200)])
 plt.show()
 
 #Plot pnls on bar chart
