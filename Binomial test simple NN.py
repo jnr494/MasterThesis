@@ -15,21 +15,21 @@ import BlackScholesModel
 import StandardNNModel
 import PortfolioClass
 
-n = 20
+n = 10
 rate = 0.02
 rate_change = 0
 T = 1
-tc = 0.0 #transaction cost
+tc = 0.01 #transaction cost
 
 
 #Create binomial model
 S0 = 1
-#s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, T/n, rate_change)
-s_model = BlackScholesModel.BlackScholesModel(S0, 0.03, 0.2, rate, T / n)
+s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, T/n, rate_change)
+#s_model = BlackScholesModel.BlackScholesModel(S0, 0.03, 0.2, rate, T / n)
 
 
 #Create sample paths 
-N = 14
+N = 12
 n_samples = 2**N
 
 s_model.reset_model(n_samples)
@@ -174,8 +174,12 @@ option_values = []
 s_model.reset_model(N_hedge_samples)
 
 #create portfolios
-models = [s_model, model_mse, model]
-model_names = ["BS", "NN MSE", "NN Risk"]
+#models = [s_model, model_mse, model]
+#model_names = ["BS", "NN MSE", "NN Risk"]
+
+models = [s_model, model]
+model_names = ["BS", "NN Risk"]
+
 ports = []
 
 #matrices to store investment in underlying for nn and optimal
@@ -258,12 +262,13 @@ for pnl, name in zip(Pnl, model_names):
     plt.show()
 
 #Plot hs at time T*0.8 over different spots
-plt.plot(np.arange(60,120)/100,[s_model.get_optimal_hs(0.8*T,x/100) for x in np.arange(60,120)],
-         label = "{} hs".format(model_names[0]))
+if type(s_model) != BinomialModel.Binom_model:
+    plt.plot(np.arange(60,120)/100,s_model.get_optimal_hs(0.8*T,np.arange(60,120)/100),
+             label = "{} hs".format(model_names[0]))
 for m, name in zip(models[1:], model_names[1:]):
     plt.plot(np.arange(60,120)/100,[m.get_hs(0.8*T,0.5,x/100, rate) for x in np.arange(60,120)], 
              label = "{} hs".format(name))
-
+    
 plt.legend()
 plt.show()
 
@@ -280,135 +285,6 @@ for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
     print('Out of sample CVAR ({}):'.format(name),tmp_cvar)
-    
 
-###########################################################################################
-###########################################################################################
-            ###########################################################################################
-            ###########################################################################################
-###########################################################################################
-###########################################################################################
-###########################################################################################
-###########################################################################################
 
-# =============================================================================
-# N_hedge_samples = 5000
-# pf_values = []
-# pf_anal_values = []
-# hedge_spots = []
-# option_values = []
-# 
-# #matrices to store investment in underlying for nn and optimal
-# hs_matrix = np.zeros((N_hedge_samples,n))
-# hs_anal_matrix = np.zeros_like(hs_matrix)
-# 
-# port_nn = PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc)
-# port_nn.rebalance(model.get_current_optimal_hs(s_model, port_nn.hs))
-# 
-# port_anal = PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc)
-# port_anal.rebalance(s_model.get_current_optimal_hs(s_model, port_nn.hs))
-# 
-# for i in range(n):
-#     #Save hs and time
-#     hs_matrix[:,i] = port_nn.hs
-#     hs_anal_matrix[:,i] = port_anal.hs
-#     
-#     #
-#     s_model.evolve_s_b()
-#     port_nn.update_pf_value()
-#     port_anal.update_pf_value()
-#     if i < n - 1:
-#         port_nn.rebalance(model.get_current_optimal_hs(s_model, port_nn.hs)) 
-#         port_anal.rebalance(s_model.get_current_optimal_hs(s_model, port_nn.hs))
-# 
-# pf_values = port_nn.pf_value
-# pf_anal_values = port_anal.pf_value
-# 
-# hedge_spots = s_model.spot
-# option_values = option(hedge_spots)
-# 
-# #Plot of hedge accuracy
-# tmp_xs = np.linspace(0.5*S0,2*S0)
-# tmp_option_values = option(tmp_xs)
-# plt.plot(tmp_xs, tmp_option_values)
-# plt.scatter(hedge_spots,pf_values, color = 'black', s = 2)
-# plt.show()
-# 
-# plt.plot(tmp_xs, tmp_option_values)
-# plt.scatter(hedge_spots,pf_anal_values, color = 'black', s = 2)
-# plt.show()
-# 
-# #Pnl
-# Pnl = np.array(pf_values) - np.array(option_values)
-# 
-# plt.scatter(hedge_spots,Pnl)
-# plt.show()
-# 
-# Pnl_anal = np.array(pf_anal_values) - np.array(option_values)
-# 
-# plt.scatter(hedge_spots,Pnl_anal)
-# plt.show()
-# 
-# print("Avg optimal abs PnL:", np.round(np.mean(abs(Pnl_anal)),5), 
-#       '(',np.round(np.std(abs(Pnl_anal)),5),')',
-#       np.round(np.mean(abs(Pnl_anal))  / init_pf,5))
-# print("Avg NN abs PnL:", np.round(np.mean(abs(Pnl)),5), 
-#       '(',np.round(np.std(abs(Pnl)),5),')',
-#       np.round(np.mean(abs(Pnl)) / init_pf,5))
-# 
-# print("Avg squared optimal PnL:", np.round(np.mean(Pnl_anal**2),5))
-# print("Avg squared NN PnL:", np.round(np.mean(Pnl**2),5))
-# 
-# 
-# print("Avg optimal PnL:", np.round(np.mean(Pnl_anal),5))
-# print("Avg NN PnL:", np.round(np.mean(Pnl),5))
-# 
-# #Plot hs from nn vs optimal
-# for i in range(5):
-#     times = np.arange(n)/n
-#     plt.plot(times, hs_anal_matrix[i,:], label = 'Anal hedge')
-#     plt.plot(times, hs_matrix[i,:],'--', label = 'NN hedge')
-#     plt.legend()
-#     plt.show()
-# 
-# #Plot worst nn
-# plt.plot(times, hs_anal_matrix[np.argmin(Pnl),:], label = 'Anal hedge')
-# plt.plot(times, hs_matrix[np.argmin(Pnl),:],'--', label = 'NN hedge')
-# plt.legend()
-# plt.title('Worst NN Pnl')
-# plt.show()
-# 
-# #Plot worst anal
-# plt.plot(times, hs_anal_matrix[np.argmin(Pnl_anal),:], label = 'Anal hedge')
-# plt.plot(times, hs_matrix[np.argmin(Pnl_anal),:],'--', label = 'NN hedge')
-# plt.legend()
-# plt.title("Worst Anal Pnl")
-# plt.show()
-# 
-# plt.plot(np.arange(60,120)/100,[model.get_hs(0.8*T,0.5,x/100, rate) for x in np.arange(60,120)], 
-#          color = "orange", label = "NN hs")
-# plt.plot(np.arange(60,120)/100,[s_model.get_optimal_hs(0.8*T,x/100) for x in np.arange(60,120)],
-#          label = "Anal hs")
-# plt.legend()
-# plt.show()
-# 
-# plt.plot(rate * np.linspace(0.5,2,200),[model.get_hs(0.8*T,0.5,1, rate * x) for x in np.linspace(0.5,2,200)])
-# plt.show()
-# 
-# #Plot pnls on bar chart
-# plt.hist([Pnl,Pnl_anal], bins = 40, histtype='bar', label=['NN','Anal'])
-# plt.title('Out of sample Pnl distribution')
-# plt.legend()
-# plt.show()
-# 
-# #Calculate CVAR
-# nn_loss = - Pnl
-# nn_cvar = np.mean(nn_loss[np.quantile(nn_loss, alpha) <= nn_loss])
-# print('NN Out of sample CVAR:',nn_cvar)
-# 
-# anal_loss = - Pnl_anal
-# anal_cvar = np.mean(anal_loss[np.quantile(anal_loss, alpha) <= anal_loss])
-# print('Anal Out of sample CVAR:',anal_cvar)
-# 
-# 
-# =============================================================================
+
