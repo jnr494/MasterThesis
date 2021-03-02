@@ -53,11 +53,11 @@ def rm_loss(y_true, y_pred):
 def rm_target_loss(y_true, y_pred):
     return tf.abs(rm_loss(y_true, y_pred) - y_true[0,0])
 
-def create_input_layers(n):
+def create_input_layers(n, n_assets):
     #Inputs
     spots = []
     for i in range(n+1):
-        spots.append(Input(shape = (1,),name ='Spot{}'.format(i)))
+        spots.append(Input(shape = (n_assets,),name ='Spot{}'.format(i)))
         
     rates = []
     for i in range(n):
@@ -73,10 +73,15 @@ def create_input_layers(n):
         
 
 class NN_simple_hedge():
-    def __init__(self, input_dim, base_output_dim, base_n_layers, base_n_units, 
-                 n_layers, n_units, activation = 'elu', final_activation = None):
-        self.input_dim = input_dim 
-        self.output_dim = 1
+    def __init__(self, n_assets, input_dim, 
+                 base_output_dim, base_n_layers, base_n_units, 
+                 n_layers, n_units, 
+                 activation = 'elu', final_activation = None):
+        
+        self.n_assets = n_assets
+        self.input_dim = input_dim  + 2 * n_assets
+        self.output_dim = n_assets
+        
         
         self.base_output_dim = base_output_dim
         self.base_n_layers = base_n_layers
@@ -159,6 +164,7 @@ class NN_simple_hedge():
         #init hs
         init_hs_comp = constmodel(self.base_output_dim, self.output_dim)
         
+        #create submodels
         self.submodel = [init_hs_comp]
         for i in range(n -1):
             tmp_model = self.create_submodel(self.input_dim, self.output_dim,
@@ -166,18 +172,18 @@ class NN_simple_hedge():
                                              self.n_layers, self.n_units, 
                                              self.activation, self.final_activation)
             self.submodel.append(tmp_model) 
-            
 
-  
         #Inputs        
-        spots, rates, bank_T, option_payoff, inputs = create_input_layers(self.n)
+        spots, rates, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
         
         #pre-Computation
         R = tf.exp(float(rate) * dt)
         
         #dummy variables
-        dummy_zeros = tf.stop_gradient(tf.math.multiply(spots[0],0))
+        dummy_zeros = tf.stop_gradient(tf.math.multiply(bank_T,0))
         dummy_ones = tf.stop_gradient(tf.identity(dummy_zeros) + 1)
+        
+        dummy_zeros_expanded = tf.stop_gradient(tf.math.multiply(spots[0],0))
         
         #Tracking variables
         time = 0
@@ -198,13 +204,21 @@ class NN_simple_hedge():
         #Computations        
         I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
                          rates[0] * self.ignore_rates, #Current rates
-                         dummy_zeros, #Current hs
+                         dummy_zeros_expanded, #Current hs
                          tf.identity(dummy_ones) * (tf.math.log(self.T - time + 1))], 1) #Log("Time to maturity" + 1)
-
+        
+        print(I1_0.shape, spots[0].shape, dummy_zeros_expanded.shape)
         hs_0 = self.submodel[time_idx](self.base_submodel(I1_0))
         
-        tc_0 = tf.math.abs(hs_0) * spots[0] * self.transaction_costs
-        pf_1 = hs_0 * (spots[1] - spots[0] * R) + R * (init_pf - tc_0)
+        tc_0 = tf.math.reduce_sum(tf.math.abs(hs_0) * spots[0], axis = 1, keepdims = True) * self.transaction_costs
+        
+        print("tc",tc_0.shape)
+        print("init_pf",init_pf.shape)
+        print((hs_0 * (spots[1] - spots[0])).shape)
+        print(tf.math.reduce_sum(hs_0 * (spots[1] - spots[0] * R), axis = 1, keepdims = True).shape)
+        pf_1 = tf.math.reduce_sum(hs_0 * (spots[1] - spots[0] * R), axis = 1, keepdims = True) + R * (init_pf - tc_0)
+        
+        print(0,pf_1.shape)
         
         time += dt
         time_idx = int(np.round(time / self.T * self.n, 6))
@@ -215,6 +229,7 @@ class NN_simple_hedge():
         
         if n > 1:
             for i in range(1,n):
+                print(i,spots[i].shape, hs[-1].shape)
                 tmp_I1 = tf.concat([tf.log(spots[i] + 1), #Spots
                                     rates[i] * self.ignore_rates, #current rates
                                     hs[-1], #Current hs
@@ -222,10 +237,9 @@ class NN_simple_hedge():
                 
                 tmp_hs = self.submodel[time_idx](self.base_submodel(tmp_I1))
 
-                tmp_tc = tf.math.abs(tmp_hs - hs[-1]) * spots[i] * self.transaction_costs
-                #tmp_pf = tmp_hs * (spots[i+1] - spots[i] * R) + R * (pf[-1] - tmp_tc)
-                tmp_pf = tmp_hs * (spots[i+1] - spots[i]) + R * (pf[-1] - tmp_tc)
-                
+                tmp_tc = tf.math.reduce_sum(tf.math.abs(tmp_hs - hs[-1]) * spots[i],axis = 1, keepdims = True) * self.transaction_costs
+                tmp_pf = tf.math.reduce_sum(tmp_hs * (spots[i+1] - spots[i]), axis = 1, keepdims = True) + R * (pf[-1] - tmp_tc)
+                print(i,tmp_hs.shape, tmp_tc.shape, pf[-1].shape, tmp_pf.shape)
                 time += dt
                 time_idx = int(np.round(time / self.T * self.n, 6))
                 
@@ -233,15 +247,16 @@ class NN_simple_hedge():
                 pf.append(tf.identity(tmp_pf))
                 tc.append(tmp_tc)
         
-        total_pf = - option_payoff + bank_T * pf[-1]
         
+        total_pf = - option_payoff + bank_T * pf[-1]
+        print(total_pf.shape)
         #Full model
         self.model_full = Model(inputs = inputs, outputs = [hs, pf, tc, init_pf])
         
         
         #Model for training
         self.model = Model(inputs = inputs, outputs = total_pf)
-        self.model.summary()
+        #self.model.summary()
         self.compile_model()
         
         return self.model
@@ -250,7 +265,7 @@ class NN_simple_hedge():
         #Risk measure model for training 
     
         #inputs
-        spots, rates, bank_T, option_payoff, inputs = create_input_layers(self.n)
+        spots, rates, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
         
         w = constmodel(1,1)(tf.stop_gradient(spots[0]))
         J = cvar_loss_func(- self.model(inputs) - w, alpha)
@@ -282,9 +297,12 @@ class NN_simple_hedge():
         tmp_lr_lambda = lambda epoch: learning_rate
         lr_schd = LearningRateScheduler(tmp_lr_lambda)
         mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
-        callbacks = [lr_schd]
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=5, min_lr=1e-7, verbose = 2)
+        er = EarlyStopping(monitor = 'loss', patience = 11)
+        callbacks = [er, mcp_save, reduce_lr]
         
         #train
+        tf.keras.backend.set_value(self.model.optimizer.learning_rate, learning_rate)
         self.model.fit(x, y, epochs = epochs, batch_size = batch_size, callbacks = callbacks)
         
     def find_optimal_lr(self, x, y, batch_size = 32, iterations = 100, min_lr = 1e-6, max_lr = 0.1, sma = 10):
@@ -332,8 +350,9 @@ class NN_simple_hedge():
         temp_CLR = lambda epoch:lr
         lr_schd = LearningRateScheduler(temp_CLR)
         mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
-        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.25, patience=5, min_lr=1e-6, verbose = 2)
-        callbacks = [mcp_save]
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=5, min_lr=1e-7, verbose = 2)
+        er = EarlyStopping(monitor = 'loss', patience = 11)
+        callbacks = [er, mcp_save, reduce_lr]
         
         if reduce_lr is True:
             callbacks = [reduce_lr] + callbacks
@@ -348,7 +367,7 @@ class NN_simple_hedge():
         time_idx = int(np.round(time / self.T * self.n, 6))
         
         if type(time) == int or type(time) == float:
-            time = np.ones_like(hs) * float(time)
+            time = np.ones_like(rate) * float(time)
     
         #x = np.column_stack([spot_tilde, rate, hs,time])
         
@@ -367,11 +386,12 @@ class NN_simple_hedge():
         return np.squeeze(self.submodel[time_idx].predict(self.base_submodel.predict(new_x)))
     
     def get_current_optimal_hs(self, model, current_hs):
-        return self.get_hs(model.time, current_hs, model.spot / model.bank, model.rate)
+        return self.get_hs(model.time, current_hs, model.spot / model.bank[:,np.newaxis], model.rate)
         
     
     def get_init_pf(self):
-        return self.model_full.predict([np.zeros((1,1)) for j in range(2 * self.n + 3)])[-1][0,0]
+        return self.model_full.predict([np.zeros((1,self.n_assets)) for j in range(self.n + 1)] \
+                                       + [np.zeros((1,1)) for j in range(self.n + 2)])[-1][0,0]
         
 if __name__ == "__main__":
     NN = NN_simple_hedge(2,1,2,4)
