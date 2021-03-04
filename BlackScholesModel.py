@@ -20,7 +20,14 @@ def BScallprice(s0, sigma, r, T, K, greek = None):
         return s0 * Nd1 - np.exp(-r * T) * K * Nd2 #return price
     elif greek == "delta":
         return Nd1 #return delta
+
+def BSputprice(s0, sigma, r, T, K, greek = None):
+    call = BScallprice(s0, sigma, r, T, K, greek)
     
+    if greek is None:
+        return K * np.exp(-r * T) + call - s0
+    else:
+        return call - 1
 
 class BlackScholesModel():
     def __init__(self,S0, mu, sigma, corr, rate, dt, n = 1, n_assets = 1):
@@ -45,7 +52,6 @@ class BlackScholesModel():
         normals = np.random.multivariate_normal(mean = np.zeros(self.n_assets), 
                                                       cov = self.corr, size = (self.n))
         
-        print(normals.shape)
         self.spot *= np.exp((self.mu - 0.5 * self.sigma **2) * self.dt + self.sigma * np.sqrt(self.dt) * normals)
                            
         #Evovle rate
@@ -92,6 +98,15 @@ class BlackScholesModel():
                 
                 price += tmp_price * units
             
+            if tmp_name == "put":
+                strike = option.params[0]
+                maturity = option.params[1]
+                
+                tmp_price = BSputprice(self.S0[tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity, strike)
+                
+                price += tmp_price * units
+            
         return price
 # =============================================================================
 #         if name == "call":
@@ -119,7 +134,16 @@ class BlackScholesModel():
                                      maturity - time, strike, "delta")
                 
                 hs[:,tmp_under] += tmp_hs * units
+            
+            if tmp_name == "put":
+                strike = option.params[0]
+                maturity = option.params[1]
                 
+                tmp_hs = BSputprice(spot[:,tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity - time, strike, "delta")
+                
+                hs[:,tmp_under] += tmp_hs * units
+            
         return hs
         
     def get_current_optimal_hs(self, *args):

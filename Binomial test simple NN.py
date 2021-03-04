@@ -15,12 +15,16 @@ import BlackScholesModel
 import StandardNNModel
 import PortfolioClass
 import OptionClass
+import nearPD
+
+import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')
 
 n = 10
-rate = 0.02
+rate = 0.05
 rate_change = 0
 T = 1
-tc = 0.0 #transaction cost
+tc = 0.000 #transaction cost
 
 
 #Create binomial model
@@ -29,22 +33,37 @@ S0 = 1
 run = "BS"
 
 if run == "BS":
+    n_assets = 1
     
-    mu = np.array([0.02, 0.03, 0.01])
-    sigma = np.array([0.2,0.15, 0.1])
-    corr = np.array([[1,0.95, 0.9], [0.95,1, 0.8], [0.9,0.8,1]])
+    np.random.seed(69)
     
-    n_assets = len(mu)
+    mu = np.random.uniform(low = 0, high = 0.1, size = n_assets)#np.array([0.02, 0.03, 0.01])
+    sigma = np.random.uniform(0.05,0.4, n_assets) #np.array([0.2,0.15, 0.1])
+    #corr = np.array([[1,0.95, 0.9], [0.95,1, 0], [0.9,0,1]])
     
-    s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, 0.02, 0.1, 10, 3)
-    option_por = OptionClass.OptionPortfolio([OptionClass.Option("call",[0.95,T],0),
-                                              OptionClass.Option("call",[1,T], 1)],
-                                             units = [1.5,-1])
+    corr = np.ones((n_assets,n_assets))
+    for i in range(n_assets):
+        for j in range(i,n_assets):
+            if not i == j:
+                #print(i,j)
+                tmp_cor = np.random.uniform(0.5,1)
+                corr[i,j] = tmp_cor
+                corr[j,i] = tmp_cor    
+    
+    corr = nearPD.nearPD(corr, 1000) 
+    
+    s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, 0.02, T / n, n, n_assets)
+    
+    n_options = 10
+    options = [OptionClass.Option(np.random.choice(["call","put"]), 
+                                  [np.random.uniform(0.5,1.5),T],np.random.randint(0,n_assets)) for _ in range(n_options)]
+    units = list(np.random.uniform(low = -5, high = 5, size = n_options))
+    option_por = OptionClass.OptionPortfolio(options,units)
 else:
     s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, T/n, rate_change)
     
 #Create sample paths 
-N = 14
+N = 18
 n_samples = 2**N
 
 s_model.reset_model(n_samples)
@@ -69,21 +88,27 @@ x = [spots_tilde[...,i]  for i in range(n+1)] \
     + [rates[:,i:(i+1)]  for i in range(n)] \
     + [banks[:,-1:],option_payoffs]
     
+x = np.column_stack(x)
+    
 y = np.zeros(shape = (n_samples,1))
+
+#Tf data
+tf.data.Dataset.from_tensor_slices((x))
+
 
 #Create NN model
 alpha = 0.95
-model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 2, 
-                                        base_output_dim = 5, base_n_layers = 2, base_n_units = 4, 
-                                        n_layers = 2, n_units = 5, 
-                                        activation = 'elu', final_activation = 'sigmoid')
-model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
+model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+                                        base_output_dim = 6, base_n_layers = 2, base_n_units = 4, 
+                                        n_layers = 4, n_units = 10, 
+                                        activation = 'elu', final_activation = None)
+model_mse.create_model2(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
                    ignore_rates = True) #option_price
 
 #Train model
 for epochs, lr in zip([100],[1e-2]):
     print(epochs,lr)
-    model_mse.train_model2(x, y, batch_size = 256, epochs = epochs, learning_rate = lr)
+    model_mse.train_model2(x, y, batch_size = 1024, epochs = epochs, learning_rate = lr)
 
 model_mse.model.load_weights("best_model.hdf5")
 model_mse.model.trainable = False
@@ -91,17 +116,17 @@ model_mse.model.trainable = False
 
 model_mse.create_rm_model(alpha = alpha)
 
-for epochs, lr in zip([10,10],[1e-2, 1e-3]):
+for epochs, lr in zip([20,10],[1e-2]):
     print(epochs,lr)
-    model_mse.train_rm_model(x, epochs, batch_size = 256, lr = lr)
+    model_mse.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
 
 #Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 2, 
+model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
                                         base_output_dim = 5, base_n_layers = 2, base_n_units = 4, 
-                                        n_layers = 2, n_units = 5, 
+                                        n_layers = 4, n_units = 10, 
                                         activation = 'elu', final_activation = None)
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                   ignore_rates = True) #option_price
+                    ignore_rates = True) #option_price
 
 model.create_rm_model(alpha = alpha)
 
@@ -109,7 +134,7 @@ model.create_rm_model(alpha = alpha)
 #Train model
 for epochs, lr in zip([100],[1e-2]):
     print(epochs,lr)
-    model.train_rm_model(x, epochs, batch_size = 256, lr = lr)
+    model.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
 
 model.model_rm.load_weights("best_model_rm.hdf5")
 
@@ -185,9 +210,6 @@ option_values = []
 s_model.reset_model(N_hedge_samples)
 
 #create portfolios
-#models = [s_model, model_mse, model]
-#model_names = ["BS", "NN MSE", "NN Risk"]
-
 models = [s_model, model, model_mse]
 model_names = ["BS", "NN Risk", "NN MSE"]
 
@@ -225,7 +247,7 @@ option_values = option_por.get_portfolio_payoff(hedge_spots)
 
 if n_assets == 1:
     #Plot of hedge accuracy
-    tmp_xs = np.linspace(0.5*S0,2*S0)
+    tmp_xs = np.linspace(0.5*S0,2*S0)[:,np.newaxis]
     tmp_option_values = option_por.get_portfolio_payoff(tmp_xs)
     
     for pf_vals, name in zip(pf_values, model_names):
@@ -281,10 +303,10 @@ for pnl, name in zip(Pnl, model_names):
 #Plot hs at time T*0.8 over different spots
 if n_assets == 1:
     if type(s_model) != BinomialModel.Binom_model:
-        plt.plot(np.arange(60,120)/100,s_model.get_optimal_hs(0.8*T,np.arange(60,120)/100),
+        plt.plot(np.arange(60,120)/100,s_model.get_optimal_hs(0.8*T,np.arange(60,120)[:,np.newaxis]/100),
                  label = "{} hs".format(model_names[0]))
     for m, name in zip(models[1:], model_names[1:]):
-        plt.plot(np.arange(60,120)/100,[m.get_hs(0.8*T,0.5,x/100, rate) for x in np.arange(60,120)], 
+        plt.plot(np.arange(60,120)/100,[m.get_hs(0.8*T,np.array(0.5),x/100, rate) for x in np.arange(60,120)], 
                  label = "{} hs".format(name))
         
     plt.legend()

@@ -10,6 +10,9 @@ import numpy as np
 def call_option_payoff(spot,strike):
     return np.maximum(spot - strike, 0)
 
+def put_option_payoff(spot, strike):
+    return np.maximum(strike - spot, 0)
+
 class Option():
     def __init__(self, name, params, underlying):
         self.name = name
@@ -18,7 +21,10 @@ class Option():
         
         if self.name == "call":
             self.payoff = lambda spot: call_option_payoff(spot, self.params[0])
-            
+        
+        if self.name == "put":
+            self.payoff = lambda spot: put_option_payoff(spot, self.params[0])
+        
 class OptionPortfolio():
     def __init__(self, options, units):
         self.options = options
