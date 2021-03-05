@@ -6,11 +6,12 @@ Created on Tue Feb 16 15:15:36 2021
 """
 
 import numpy as np
-import copy
 from PortfolioClass import Portfolio
 
 class Binom_model():
     def __init__(self,S0, alpha, sigma, rate, p, dt, rate_change = 0., n = 1):
+        self.n_assets = 1
+        
         self.S0 = S0
         self.alpha = alpha
         self.sigma = sigma
@@ -29,9 +30,9 @@ class Binom_model():
         self.bank *= np.exp(self.rate * self.dt)
         
         #Evovle s 
-        sign = np.random.choice([1,-1], p = [self.p, 1-self.p], size = self.n)
+        sign = np.random.choice([1,-1], p = [self.p, 1-self.p], size = self.spot.shape)
         self.spot *= np.exp(self.alpha * self.dt + sign * self.sigma * np.sqrt(self.dt))
-                   
+        
         self.no_u += np.maximum(sign,0)  
         self.no_d += np.maximum(-sign,0)
         
@@ -46,9 +47,9 @@ class Binom_model():
         self.time += self.dt
         
         #Save bank and spot
-        self.spot_hist = np.append(self.spot_hist, self.spot[:,np.newaxis], 1)
-        self.bank_hist = np.append(self.bank_hist, self.bank[:,np.newaxis], 1)
-        self.rate_hist = np.append(self.rate_hist, self.rate[:,np.newaxis], 1)
+        self.spot_hist = np.append(self.spot_hist, self.spot[...,np.newaxis], -1)
+        self.bank_hist = np.append(self.bank_hist, self.bank[...,np.newaxis], -1)
+        self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
         
         return self.spot, self.bank, self.time
 
@@ -57,30 +58,25 @@ class Binom_model():
              self.n = n
         
          self.time = 0
-         self.spot = self.S0 * np.ones(self.n)
+         self.spot = self.S0 * np.ones((self.n,1))
          self.bank = 1 * np.ones(self.n)
          self.rate = self.rate0 * np.ones(self.n)
          
-         self.spot_hist = np.array(self.spot)[:,np.newaxis] #Applying np.array to make the arrays independent
-         self.bank_hist = np.array(self.bank)[:,np.newaxis]
-         self.rate_hist = np.array(self.rate)[:,np.newaxis]
+         self.spot_hist = np.array(self.spot)[...,np.newaxis] #Applying np.array to make the arrays independent
+         self.bank_hist = np.array(self.bank)[...,np.newaxis]
+         self.rate_hist = np.array(self.rate)[...,np.newaxis]
          
-         self.no_d = np.zeros(self.n)
-         self.no_u = np.zeros(self.n)
+         self.no_d = np.zeros(self.spot.shape)
+         self.no_u = np.zeros(self.spot.shape)
     
-    def init_option(self, name, params):
-        if name == "call":
-            strike = float(params[0])
-            maturity = float(params[1])
-            
-            tmp_option = lambda spots: np.maximum(spots - strike, 0)
-            
-        
+    def init_option(self, option_por):
+        maturity = option_por.options[0].params[1]
         self.optimal_hedge_setup(maturity)
         
-        tmp_spots = np.array([self.S0*self.optimal_hedge.u**(self.optimal_hedge.n-i) * self.optimal_hedge.d**(i) 
-                     for i in range(self.optimal_hedge.n+1)])
-        tmp_option_payoffs = tmp_option(tmp_spots)
+        self.mat_spots = np.array([self.S0*self.optimal_hedge.u**(self.optimal_hedge.n-i) * self.optimal_hedge.d**(i) 
+                                   for i in range(self.optimal_hedge.n+1)])[:,np.newaxis]
+        
+        tmp_option_payoffs = option_por.get_portfolio_payoff(self.mat_spots)
         
         option_price = self.optimal_hedge.calculate_hedge_price(tmp_option_payoffs)
         
@@ -99,7 +95,7 @@ class Binom_model():
                 print("FUCK", time, s, time_idx)
             hs.append(self.optimal_hedge.hs[spot_place, time_idx])
             
-        return np.array(hs)
+        return np.array(hs)[:,np.newaxis]
     
     def get_current_optimal_hs(self, *args):
         return self.get_optimal_hs(self.time, self.spot)

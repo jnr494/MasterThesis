@@ -97,10 +97,10 @@ def create_submodel(input_dim, output_dim,
         
         submodel.add(BatchNormalization())
         submodel.add(Dense(n_units, activation = activation)) #, input_dim = input_dim))
-        #submodel.add(BatchNormalization())
+        submodel.add(BatchNormalization())
         for _ in range(n_layers-1):
             submodel.add(Dense(n_units, activation = activation))
-       #     submodel.add(BatchNormalization())  
+            submodel.add(BatchNormalization())  
         submodel.add(Dense(output_dim, activation = final_activation))
         
         submodel.summary()
@@ -108,19 +108,13 @@ def create_submodel(input_dim, output_dim,
         return submodel
 
 class NN_simple_hedge():
-    def __init__(self, n_assets, input_dim, 
-                 base_output_dim, base_n_layers, base_n_units, 
+    def __init__(self, n_assets, input_dim,  
                  n_layers, n_units, 
                  activation = 'elu', final_activation = None):
         
         self.n_assets = n_assets
         self.input_dim = input_dim  + 2 * n_assets
         self.output_dim = n_assets
-        
-        
-        self.base_output_dim = base_output_dim
-        self.base_n_layers = base_n_layers
-        self.base_n_units = base_n_units
         
         self.n_layers = n_layers
         self.n_units = n_units 
@@ -144,6 +138,11 @@ class NN_simple_hedge():
             self.ignore_rates = 0
         else:
             self.ignore_rates = 1
+        
+        if abs(self.transaction_costs) < 1e-7:
+            self.ignore_hs = 0
+        else:
+            self.ignore_hs = 1
         
         #init hs
         init_hs_comp = constmodel(self.input_dim, self.output_dim)
@@ -184,7 +183,7 @@ class NN_simple_hedge():
         #Computations        
         I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
                          rates[0] * self.ignore_rates, #Current rates
-                         dummy_zeros_expanded], 1) #Current hs
+                         dummy_zeros_expanded * self.ignore_hs], 1) #Current hs
         
         hs_0 = self.submodel[time_idx](I1_0)
         
@@ -205,7 +204,7 @@ class NN_simple_hedge():
             for i in range(1,n):
                 tmp_I1 = tf.concat([tf.math.log(spots[i] + 1), #Spots
                                     rates[i] * self.ignore_rates, #current rates
-                                    hs[-1]], 1) #Current hs
+                                    hs[-1] * self.ignore_hs], 1) #Current hs
                 
                 tmp_hs = self.submodel[time_idx](tmp_I1)
 
@@ -244,6 +243,11 @@ class NN_simple_hedge():
             self.ignore_rates = 0
         else:
             self.ignore_rates = 1
+        
+        if abs(self.transaction_costs) < 1e-7:
+            self.ignore_hs = 0
+        else:
+            self.ignore_hs = 1
         
         #init hs
         init_hs_comp = constmodel(self.input_dim, self.output_dim)
@@ -284,7 +288,7 @@ class NN_simple_hedge():
         #Computations        
         I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
                          rates[0] * self.ignore_rates, #Current rates
-                         dummy_zeros_expanded], 1) #Current hs
+                         dummy_zeros_expanded * self.ignore_hs], 1) #Current hs
         
         hs_0 = self.submodel[time_idx](I1_0)
         
@@ -298,7 +302,7 @@ class NN_simple_hedge():
             for i in range(1,n):
                 tmp_I1 = tf.concat([tf.math.log(spots[i] + 1), #Spots
                                     rates[i] * self.ignore_rates, #current rates
-                                    hs[-1]], 1) #Current hs
+                                    hs[-1] * self.ignore_hs], 1) #Current hs
                 
                 tmp_hs = self.submodel[time_idx](tmp_I1)
                 
@@ -350,23 +354,11 @@ class NN_simple_hedge():
     def compile_model(self, loss = 'mean_squared_error'):
         self.model.compile(optimizer = "adam", loss = loss, run_eagerly=False) #'mean_squared_error')
     
-    def train_model1(self, x, y, epochs, batch_size = 32, max_lr = [0.1,0.01], min_lr = 0.001, step_size = 40, 
-                     best_model_name = "best_model.hdf5"):
-        temp_CLR = lambda epoch: CLR(epoch,max_lr,min_lr, step_size)
-        lr_schd = LearningRateScheduler(temp_CLR)
-        mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
-        callbacks = [lr_schd, mcp_save]
         
-        #train
-        self.model.fit(x, y, epochs = epochs, batch_size = batch_size, callbacks = callbacks, verbose = 2)
-        
-    def train_model2(self, x, y, epochs, batch_size = 32, patience = 10, learning_rate = 0.01, best_model_name = "best_model.hdf5") :                
-        #train
-        #tmp_lr_lambda = lambda epoch: learning_rate
-        #lr_schd = LearningRateScheduler(tmp_lr_lambda)
+    def train_model(self, x, y, epochs, batch_size = 32, patience = [5,11], learning_rate = 0.01, best_model_name = "best_model.hdf5") :                
         mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
-        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=5, min_lr=1e-7, verbose = 2)
-        er = EarlyStopping(monitor = 'loss', patience = 11, verbose = 1)
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=patience[0], min_lr=1e-6, verbose = 2)
+        er = EarlyStopping(monitor = 'loss', patience = patience[1], verbose = 1)
         callbacks = [er, mcp_save, reduce_lr]
         
         #train
@@ -379,30 +371,26 @@ class NN_simple_hedge():
         
         return rm_outputs[0,1] + np.mean(rm_outputs[:,0])
     
-    def train_rm_model(self, x, epochs = 1, batch_size = 32, lr = 0.01, best_model_name = "best_model_rm.hdf5"):  
-        #temp_CLR = lambda epoch:lr
-        #lr_schd = LearningRateScheduler(temp_CLR)
-        
-        
-        
+    def train_rm_model(self, x, epochs = 1, batch_size = 32, patience = [5,11], lr = 0.01, best_model_name = "best_model_rm.hdf5"):  
+
         mcp_save = ModelCheckpoint(best_model_name, save_best_only=True, monitor='loss', mode='min')
-        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=5, min_lr=1e-7, verbose = 1)
-        er = EarlyStopping(monitor = 'loss', patience = 11, verbose = 1)
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor= 0.1, patience=patience[0], min_lr=1e-6, verbose = 1)
+        er = EarlyStopping(monitor = 'loss', patience = patience[1], verbose = 1)
         
         callbacks = [er, mcp_save, reduce_lr]
         
-        #y = np.ones(shape = (len(x[0][:,0]), 2))
         y = np.zeros(shape = (len(x),2))
         tf.keras.backend.set_value(self.model_rm.optimizer.learning_rate, lr)
         
-        #tf data
-        dataset = tf.data.Dataset.from_tensor_slices((x,y))
-        dataset = dataset.shuffle(buffer_size = len(x))
-        dataset = dataset.batch(batch_size = batch_size)
+# =============================================================================
+#         #tf data
+#         dataset = tf.data.Dataset.from_tensor_slices((x,y))
+#         dataset = dataset.shuffle(buffer_size = len(x))
+#         dataset = dataset.batch(batch_size = batch_size)
+# =============================================================================
         
         self.model_rm.fit(x, y, epochs = epochs, batch_size = batch_size, verbose = 1, callbacks = callbacks)
-        #self.model_rm.fit(dataset, epochs = epochs, verbose = 1, callbacks = callbacks, use_multiprocessing=True, workers = 4)
-        self.model_rm.load_weights("best_model_rm.hdf5")
+        self.model_rm.load_weights(best_model_name)
         
     def get_hs(self, time, hs, spot_tilde, rate):
         time_idx = int(np.round(time / self.T * self.n, 6))
@@ -412,10 +400,9 @@ class NN_simple_hedge():
         
         log_spot = np.log(spot_tilde + 1)
         
-        new_x = np.column_stack([log_spot, rate * self.ignore_rates, hs])
+        new_x = np.column_stack([log_spot, rate * self.ignore_rates, hs * self.ignore_hs])
         
         return np.squeeze(self.submodel[time_idx].predict(new_x)).reshape(hs.shape)
-        #np.squeeze(self.submodel[time_idx].predict(self.base_submodel.predict(new_x)))
     
     def get_current_optimal_hs(self, model, current_hs):
         return self.get_hs(model.time, current_hs, model.spot / model.bank[:,np.newaxis], model.rate)
@@ -423,63 +410,6 @@ class NN_simple_hedge():
     
     def get_init_pf(self):
         return self.model_full.predict(np.zeros((1,self.n_assets * (self.n+1) + self.n + 2)))[-1][0,0]
-# =============================================================================
-#         return self.model_full.predict([np.zeros((1,self.n_assets)) for j in range(self.n + 1)] \
-#                                        + [np.zeros((1,1)) for j in range(self.n + 2)])[-1][0,0]
-# =============================================================================
-
-class CustomModel(tf.keras.Model):
-    def __init__(self, input_dim, output_dim, n, n_layers, n_units, activation):
-		# call the parent constructor
-        super(CustomModel, self).__init__()
-        
-        self.hs = []
-        self.hs.append(constmodel(input_dim, output_dim))
-        for i in range(n-1):
-            self.hf.append(create_submodel(self, input_dim, output_dim, n_layers, n_units, activation))
-        
-        
-        
-        
-    def call(self, inputs):
-        
-        return inputs
-        
-    
-    def train_step(self, data):
-        # Unpack the data. Its structure depends on your model and
-        # on what you pass to `fit()`.
-        if len(data) == 3:
-            x, y, sample_weight = data
-        else:
-            sample_weight = None
-            x, y = data
-
-        with tf.GradientTape() as tape:
-            y_pred = self(x, training=True)  # Forward pass
-            # Compute the loss value.
-            # The loss function is configured in `compile()`.
-            loss = self.compiled_loss(
-                y,
-                y_pred,
-                sample_weight=sample_weight,
-                regularization_losses=self.losses,
-            )
-
-        # Compute gradients
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-
-        # Update weights
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-        # Update the metrics.
-        # Metrics are configured in `compile()`.
-        self.compiled_metrics.update_state(y, y_pred, sample_weight=sample_weight)
-
-        # Return a dict mapping metric names to current value.
-        # Note that it will include the loss (tracked in self.metrics).
-        return {m.name: m.result() for m in self.metrics}
 
         
 if __name__ == "__main__":

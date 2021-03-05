@@ -15,31 +15,32 @@ import BlackScholesModel
 import StandardNNModel
 import PortfolioClass
 import OptionClass
+import HedgeEngineClass
 import nearPD
 
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 
 n = 10
-rate = 0.05
+rate = 0.1
 rate_change = 0
 T = 1
-tc = 0.000 #transaction cost
+tc = 0.01 #transaction cost
 
 
-#Create binomial model
+#Create stock model
 S0 = 1
 
 run = "BS"
 
+
 if run == "BS":
-    n_assets = 1
+    n_assets = 5
     
-    np.random.seed(69)
+    np.random.seed(69)    
     
-    mu = np.random.uniform(low = 0, high = 0.1, size = n_assets)#np.array([0.02, 0.03, 0.01])
-    sigma = np.random.uniform(0.05,0.4, n_assets) #np.array([0.2,0.15, 0.1])
-    #corr = np.array([[1,0.95, 0.9], [0.95,1, 0], [0.9,0,1]])
+    mu = np.random.uniform(low = 0, high = 0.1, size = n_assets)
+    sigma = np.random.uniform(0.05,0.4, n_assets)
     
     corr = np.ones((n_assets,n_assets))
     for i in range(n_assets):
@@ -52,16 +53,30 @@ if run == "BS":
     
     corr = nearPD.nearPD(corr, 1000) 
     
-    s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, 0.02, T / n, n, n_assets)
+    s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, 0.02, T / n, n_assets = n_assets)
     
     n_options = 10
     options = [OptionClass.Option(np.random.choice(["call","put"]), 
-                                  [np.random.uniform(0.5,1.5),T],np.random.randint(0,n_assets)) for _ in range(n_options)]
+                                  [(1+0.5*T*np.random.uniform(-1,1))*S0,T],np.random.randint(0,n_assets)) for _ in range(n_options)]
     units = list(np.random.uniform(low = -5, high = 5, size = n_options))
     option_por = OptionClass.OptionPortfolio(options,units)
-else:
-    s_model = BinomialModel.Binom_model(S0, 0.1, 0.2, rate, 0.5, T/n, rate_change)
+
+elif run == "Bin":
+    np.random.seed(69)
     
+    s_model = BinomialModel.Binom_model(S0, 0.05, 0.2, rate, 0.5, T/n, rate_change)
+    
+    n_assets = s_model.n_assets
+    
+    n_options = 1
+    options = [OptionClass.Option(np.random.choice(["call","put"]), 
+                                  [(1+0.5*T*np.random.uniform(-1,1))*S0,T],np.random.randint(0,n_assets)) for _ in range(n_options)]
+    units = list(np.random.uniform(low = -5, high = 5, size = n_options))
+    option_por = OptionClass.OptionPortfolio(options,units)
+    
+else:
+    raise ValueError("Plase choose implemented model") 
+
 #Create sample paths 
 N = 18
 n_samples = 2**N
@@ -92,41 +107,37 @@ x = np.column_stack(x)
     
 y = np.zeros(shape = (n_samples,1))
 
-#Tf data
-tf.data.Dataset.from_tensor_slices((x))
-
-
 #Create NN model
-alpha = 0.95
+alpha = 0.9
 model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
-                                        base_output_dim = 6, base_n_layers = 2, base_n_units = 4, 
-                                        n_layers = 4, n_units = 10, 
+                                        n_layers = 3, n_units = 4, 
                                         activation = 'elu', final_activation = None)
-model_mse.create_model2(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
-                   ignore_rates = True) #option_price
+model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
+                   ignore_rates = True) 
 
 #Train model
 for epochs, lr in zip([100],[1e-2]):
     print(epochs,lr)
-    model_mse.train_model2(x, y, batch_size = 1024, epochs = epochs, learning_rate = lr)
+    model_mse.train_model(x, y, batch_size = 1024, epochs = epochs, patience = [5,11], learning_rate = lr)
 
 model_mse.model.load_weights("best_model.hdf5")
 model_mse.model.trainable = False
 
 
-model_mse.create_rm_model(alpha = alpha)
-
-for epochs, lr in zip([20,10],[1e-2]):
-    print(epochs,lr)
-    model_mse.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
+# =============================================================================
+# model_mse.create_rm_model(alpha = alpha)
+# 
+# for epochs, lr in zip([20,10],[1e-2]):
+#     print(epochs,lr)
+#     model_mse.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
+# =============================================================================
 
 #Create NN model with rm
 model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
-                                        base_output_dim = 5, base_n_layers = 2, base_n_units = 4, 
-                                        n_layers = 4, n_units = 10, 
+                                        n_layers = 3, n_units = 4, 
                                         activation = 'elu', final_activation = None)
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True) #option_price
+                    ignore_rates = True)
 
 model.create_rm_model(alpha = alpha)
 
@@ -134,7 +145,7 @@ model.create_rm_model(alpha = alpha)
 #Train model
 for epochs, lr in zip([100],[1e-2]):
     print(epochs,lr)
-    model.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
+    model.train_rm_model(x, epochs, batch_size = 1024, patience = [5,11], lr = lr)
 
 model.model_rm.load_weights("best_model_rm.hdf5")
 
@@ -191,59 +202,61 @@ print("init_pf2:",init_pf_nn2)
 
 
 #Hedge simulations with fitted model
-anal_price = option_price
+init_pf = option_price
 
-init_pf = anal_price
-
-def calculate_hs(time, hs, spot_tilde, rate):
-    if type(time) == int or type(time) == float:
-        time = np.ones_like(hs) * float(time)
-    
-    tmp_x = np.column_stack([spot_tilde, rate, hs,time])
-    return np.squeeze(model.get_hs(tmp_x))
-
- 
-N_hedge_samples = 5000
-hedge_spots = []
-option_values = []
-
-s_model.reset_model(N_hedge_samples)
+N_hedge_samples = 20000
 
 #create portfolios
 models = [s_model, model, model_mse]
-model_names = ["BS", "NN Risk", "NN MSE"]
+model_names = [run, "NN Risk", "NN MSE"]
 
-ports = []
+# =============================================================================
+# s_model.reset_model(N_hedge_samples)
+# ports = []
+# 
+# #matrices to store investment in underlying for nn and optimal
+# hs_matrix = []
+# 
+# for m in models:
+#     ports.append(PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc))
+#     hs_matrix.append(np.zeros((N_hedge_samples, n_assets, n)))
+# 
+# #init rebalance
+# for por, m in zip(ports,models):
+#     por.rebalance(m.get_current_optimal_hs(s_model, por.hs))
+# 
+# for i in range(n):
+#     #Save hs and time
+#     for por, hs_m in zip(ports, hs_matrix):
+#         hs_m[...,i] = por.hs 
+#     
+#     s_model.evolve_s_b()
+#     
+#     for por in ports:
+#         por.update_pf_value()
+#     
+#     if i < n - 1:
+#         for por, m in zip(ports,models):
+#             por.rebalance(m.get_current_optimal_hs(s_model, por.hs)) 
+# 
+# pf_values = [por.pf_value for por in ports]
+# 
+# hedge_spots = s_model.spot
+# option_values = option_por.get_portfolio_payoff(hedge_spots)
+# Pnl
+# Pnl = [np.array(pf_val) - np.array(option_values) for pf_val in pf_values]
+# =============================================================================
 
-#matrices to store investment in underlying for nn and optimal
-hs_matrix = []
+#create hedge experiment engine
+hedge_engine = HedgeEngineClass.HedgeEngineClass(n, s_model, models, option_por)
+#run hedge experiment
+hedge_engine.run_hedge_experiment(N_hedge_samples, init_pf, tc)
 
-for m in models:
-    ports.append(PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc))
-    hs_matrix.append(np.zeros((N_hedge_samples, n_assets, n)))
-
-#init rebalance
-for por, m in zip(ports,models):
-    por.rebalance(m.get_current_optimal_hs(s_model, por.hs))
-
-for i in range(n):
-    #Save hs and time
-    for por, hs_m in zip(ports, hs_matrix):
-        hs_m[...,i] = por.hs 
-    
-    s_model.evolve_s_b()
-    
-    for por in ports:
-        por.update_pf_value()
-    
-    if i < n - 1:
-        for por, m in zip(ports,models):
-            por.rebalance(m.get_current_optimal_hs(s_model, por.hs)) 
-
-pf_values = [por.pf_value for por in ports]
-
-hedge_spots = s_model.spot
-option_values = option_por.get_portfolio_payoff(hedge_spots)
+pf_values = hedge_engine.pf_values
+hedge_spots = hedge_engine.hedge_spots
+option_values = hedge_engine.option_values
+Pnl = hedge_engine.Pnl
+hs_matrix = hedge_engine.hs_matrix
 
 if n_assets == 1:
     #Plot of hedge accuracy
@@ -255,10 +268,6 @@ if n_assets == 1:
         plt.scatter(hedge_spots,pf_vals, color = 'black', s = 2)
         plt.title("Hedge Errors:" + name)
         plt.show()
-
-
-#Pnl
-Pnl = [np.array(pf_val) - np.array(option_values) for pf_val in pf_values]
 
 if n_assets == 1:
     for pnl, name in zip(Pnl, model_names):
@@ -300,15 +309,31 @@ for pnl, name in zip(Pnl, model_names):
         plt.title('Worst {} Pnl, Asset: {}'.format(name,i))
         plt.show()
 
-#Plot hs at time T*0.8 over different spots
+#Plot hs at some time over different spots
+time = 0.5*T
+time_idx = time_idx = int(np.round(time / s_model.dt , 6))
 if n_assets == 1:
+    tmp_spots = np.arange(60,180)/100*s_model.S0
+    tmp_spots_tilde = tmp_spots * np.exp(- rate * time)
+    
     if type(s_model) != BinomialModel.Binom_model:
-        plt.plot(np.arange(60,120)/100,s_model.get_optimal_hs(0.8*T,np.arange(60,120)[:,np.newaxis]/100),
+        tmp_model_hs = s_model.get_optimal_hs(time,tmp_spots[:,np.newaxis])
+        plt.plot(tmp_spots, tmp_model_hs,
                  label = "{} hs".format(model_names[0]))
-    for m, name in zip(models[1:], model_names[1:]):
-        plt.plot(np.arange(60,120)/100,[m.get_hs(0.8*T,np.array(0.5),x/100, rate) for x in np.arange(60,120)], 
-                 label = "{} hs".format(name))
+    else:
+        tmp_spots_bin = s_model.optimal_hedge.St[:(time_idx+1), time_idx]
+        tmp_model_hs = s_model.get_optimal_hs(time, tmp_spots_bin)
+        plt.scatter(tmp_spots_bin, tmp_model_hs,
+                    label = "{} hs".format(model_names[0]))   
         
+    current_hs = np.array(0.5)
+    for m, name in zip(models[1:], model_names[1:]):
+        plt.plot(np.arange(60,180)/100*s_model.S0,
+                 [m.get_hs(time, current_hs, spot_tilde, rate) for spot_tilde in tmp_spots_tilde], 
+                 label = "{} hs".format(name))
+    
+    hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)
+    plt.ylim(np.min(tmp_model_hs) - hs_range * 0.2, np.max(tmp_model_hs) + hs_range * 0.2)
     plt.legend()
     plt.show()
 
@@ -325,6 +350,5 @@ for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
     print('Out of sample CVAR ({}):'.format(name),tmp_cvar)
-
 
 
