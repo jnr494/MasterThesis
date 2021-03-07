@@ -11,6 +11,7 @@ import copy
 
 import BinomialModel
 import BlackScholesModel
+import HestonModel
 
 import StandardNNModel
 import PortfolioClass
@@ -21,17 +22,17 @@ import nearPD
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 
-n = 10
-rate = 0.1
+n = 60 
+rate = 0.02
 rate_change = 0
-T = 1
-tc = 0.01 #transaction cost
+T = 3/12
+tc = 0.005 #transaction cost
 
 
 #Create stock model
 S0 = 1
 
-run = "BS"
+run = "Heston"
 
 
 if run == "BS":
@@ -73,9 +74,27 @@ elif run == "Bin":
                                   [(1+0.5*T*np.random.uniform(-1,1))*S0,T],np.random.randint(0,n_assets)) for _ in range(n_options)]
     units = list(np.random.uniform(low = -5, high = 5, size = n_options))
     option_por = OptionClass.OptionPortfolio(options,units)
+
+elif run == "Heston":
+    np.random.seed(69)
     
+    s_model = HestonModel.HestonModel(S0, mu = 0.03, v0 = 0.09, kappa = 2, theta = 0.09, sigma = 0.3, 
+                                      rho = -0.9, rate = 0.02, dt = T / n, ddt = 0.01)
+    
+    n_true_assets = s_model.n_true_assets
+    n_assets = s_model.n_assets
+    
+    n_options = 1
+    options = [OptionClass.Option(np.random.choice(["call","put"]), 
+                                  [(1+0.5*T*np.random.uniform(-1,1))*S0,T],np.random.randint(0,n_true_assets)) for _ in range(n_options)]
+    units = list(np.random.uniform(low = -5, high = 5, size = n_options))
+    option_por = OptionClass.OptionPortfolio(options,units)
+
 else:
     raise ValueError("Plase choose implemented model") 
+
+#Option por
+option_price = s_model.init_option(option_por)
 
 #Create sample paths 
 N = 18
@@ -91,9 +110,6 @@ rates = s_model.rate_hist
 
 
 spots_tilde = spots / banks[:,np.newaxis,:]
-
-#Option
-option_price = s_model.init_option(option_por)
 
 #Get option payoffs from samples
 option_payoffs = option_por.get_portfolio_payoff(spots[...,-1])[:,np.newaxis]
@@ -204,48 +220,14 @@ print("init_pf2:",init_pf_nn2)
 #Hedge simulations with fitted model
 init_pf = option_price
 
-N_hedge_samples = 20000
+N_hedge_samples = 10000
 
 #create portfolios
 models = [s_model, model, model_mse]
 model_names = [run, "NN Risk", "NN MSE"]
 
-# =============================================================================
-# s_model.reset_model(N_hedge_samples)
-# ports = []
-# 
-# #matrices to store investment in underlying for nn and optimal
-# hs_matrix = []
-# 
-# for m in models:
-#     ports.append(PortfolioClass.Portfolio(0, init_pf, s_model, transaction_cost = tc))
-#     hs_matrix.append(np.zeros((N_hedge_samples, n_assets, n)))
-# 
-# #init rebalance
-# for por, m in zip(ports,models):
-#     por.rebalance(m.get_current_optimal_hs(s_model, por.hs))
-# 
-# for i in range(n):
-#     #Save hs and time
-#     for por, hs_m in zip(ports, hs_matrix):
-#         hs_m[...,i] = por.hs 
-#     
-#     s_model.evolve_s_b()
-#     
-#     for por in ports:
-#         por.update_pf_value()
-#     
-#     if i < n - 1:
-#         for por, m in zip(ports,models):
-#             por.rebalance(m.get_current_optimal_hs(s_model, por.hs)) 
-# 
-# pf_values = [por.pf_value for por in ports]
-# 
-# hedge_spots = s_model.spot
-# option_values = option_por.get_portfolio_payoff(hedge_spots)
-# Pnl
-# Pnl = [np.array(pf_val) - np.array(option_values) for pf_val in pf_values]
-# =============================================================================
+#models = [s_model]
+#model_names = [run]
 
 #create hedge experiment engine
 hedge_engine = HedgeEngineClass.HedgeEngineClass(n, s_model, models, option_por)
