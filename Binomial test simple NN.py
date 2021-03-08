@@ -22,7 +22,7 @@ import nearPD
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 
-n = 60 
+n = 20 
 rate = 0.02
 rate_change = 0
 T = 3/12
@@ -97,7 +97,7 @@ else:
 option_price = s_model.init_option(option_por)
 
 #Create sample paths 
-N = 18
+N = 18 
 n_samples = 2**N
 
 s_model.reset_model(n_samples)
@@ -333,4 +333,6 @@ for pnl, name in zip(Pnl, model_names):
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
     print('Out of sample CVAR ({}):'.format(name),tmp_cvar)
 
-
+#Turnover
+for por, name in zip(hedge_engine.ports, model_names):
+    print('Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))

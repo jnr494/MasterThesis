@@ -21,8 +21,13 @@ class Portfolio():
         
         self.transaction_cost = transaction_cost
         self.tc_hist = np.zeros((self.n,1))
-        
+                
         self.hs = np.ones((self.n, self.model.n_assets)) * init_hs
+
+        #turnover
+        self.turnover = np.zeros_like(self.hs)
+
+        #get portfolio going
         self.rebalance(self.hs)
         self.update_pf_value()
         
@@ -40,7 +45,10 @@ class Portfolio():
         self.hs = new_hs
         self.hb = (self.pf_value - np.sum(self.hs * self.model.spot, axis = 1) - tmp_tc) / self.model.bank
         
+        #update turnover
+        self.turnover += hs_change
         
+        #save hs and hb
         self.hs_hist = np.append(self.hs_hist, self.hs[...,np.newaxis], 2)
         self.hb_hist = np.append(self.hb_hist, self.hb[:,np.newaxis], 1)
         
