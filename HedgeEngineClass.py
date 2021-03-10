@@ -50,6 +50,7 @@ class HedgeEngineClass():
         self.pf_values = [por.pf_value for por in self.ports]
         
         self.hedge_spots = self.s_model.spot
-        self.option_values = self.option_por.get_portfolio_payoff(self.hedge_spots)
+        self.spot_hist = self.s_model.spot_hist
+        self.option_values = self.option_por.get_portfolio_payoff(self.spot_hist)
         
         self.Pnl = [np.array(pf_val) - np.array(self.option_values) for pf_val in self.pf_values]

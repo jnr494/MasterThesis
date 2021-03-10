@@ -7,36 +7,34 @@ Created on Wed Feb 17 13:25:54 2021
 
 import numpy as np 
 import matplotlib.pyplot as plt
-import copy
+import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')
+
 
 import BinomialModel
 import BlackScholesModel
 import HestonModel
 
 import StandardNNModel
-import PortfolioClass
 import OptionClass
 import HedgeEngineClass
 import nearPD
 
-import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')
-
-n = 20 
+n = 2000
 rate = 0.02
 rate_change = 0
-T = 3/12
-tc = 0.005 #transaction cost
+T = 1/12
+tc = 0.000 #transaction cost
 
 
 #Create stock model
 S0 = 1
 
-run = "Heston"
+run = "BS"
 
 
 if run == "BS":
-    n_assets = 5
+    n_assets = 1
     
     np.random.seed(69)    
     
@@ -56,10 +54,15 @@ if run == "BS":
     
     s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, 0.02, T / n, n_assets = n_assets)
     
-    n_options = 10
-    options = [OptionClass.Option(np.random.choice(["call","put"]), 
-                                  [(1+0.5*T*np.random.uniform(-1,1))*S0,T],np.random.randint(0,n_assets)) for _ in range(n_options)]
-    units = list(np.random.uniform(low = -5, high = 5, size = n_options))
+# =============================================================================
+#     n_options = 1
+#     options = [OptionClass.Option(np.random.choice(["call","put"]), 
+#                                   [(1+0.05*T*np.random.uniform(-1,1))*S0,T,S0*np.random.uniform(0.9,0.94)],
+#                                   np.random.randint(0,n_assets)) for _ in range(n_options)]
+#     units = list(np.random.uniform(low = -5, high = 5, size = n_options))
+# =============================================================================
+    units = [1]
+    options = [OptionClass.Option("docall",[S0,T,0.9*S0],0)]
     option_por = OptionClass.OptionPortfolio(options,units)
 
 elif run == "Bin":
@@ -96,138 +99,143 @@ else:
 #Option por
 option_price = s_model.init_option(option_por)
 
-#Create sample paths 
-N = 18 
-n_samples = 2**N
-
-s_model.reset_model(n_samples)
-for j in range(n):
-    s_model.evolve_s_b()
-
-spots = s_model.spot_hist
-banks = s_model.bank_hist
-rates = s_model.rate_hist
-
-
-spots_tilde = spots / banks[:,np.newaxis,:]
-
-#Get option payoffs from samples
-option_payoffs = option_por.get_portfolio_payoff(spots[...,-1])[:,np.newaxis]
-
-#Setup x and y
-x = [spots_tilde[...,i]  for i in range(n+1)] \
-    + [rates[:,i:(i+1)]  for i in range(n)] \
-    + [banks[:,-1:],option_payoffs]
-    
-x = np.column_stack(x)
-    
-y = np.zeros(shape = (n_samples,1))
-
-#Create NN model
-alpha = 0.9
-model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
-                                        n_layers = 3, n_units = 4, 
-                                        activation = 'elu', final_activation = None)
-model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
-                   ignore_rates = True) 
-
-#Train model
-for epochs, lr in zip([100],[1e-2]):
-    print(epochs,lr)
-    model_mse.train_model(x, y, batch_size = 1024, epochs = epochs, patience = [5,11], learning_rate = lr)
-
-model_mse.model.load_weights("best_model.hdf5")
-model_mse.model.trainable = False
-
-
 # =============================================================================
-# model_mse.create_rm_model(alpha = alpha)
+# #Create sample paths 
+# N = 18 
+# n_samples = 2**N
 # 
-# for epochs, lr in zip([20,10],[1e-2]):
-#     print(epochs,lr)
-#     model_mse.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
+# s_model.reset_model(n_samples)
+# for j in range(n):
+#     s_model.evolve_s_b()
+# 
+# spots = s_model.spot_hist
+# banks = s_model.bank_hist
+# rates = s_model.rate_hist
+# 
+# 
+# spots_tilde = spots / banks[:,np.newaxis,:]
+# 
+# #Get option payoffs from samples
+# option_payoffs = option_por.get_portfolio_payoff(spots)[:,np.newaxis]
+# 
+# #Setup x and y
+# x = [spots_tilde[...,i]  for i in range(n+1)] \
+#     + [rates[:,i:(i+1)]  for i in range(n)] \
+#     + [banks[:,-1:],option_payoffs]
+#     
+# x = np.column_stack(x)
+#     
+# y = np.zeros(shape = (n_samples,1))
 # =============================================================================
 
-#Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
-                                        n_layers = 3, n_units = 4, 
-                                        activation = 'elu', final_activation = None)
-model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True)
+alpha = 0.9
 
-model.create_rm_model(alpha = alpha)
-
-#model.model_rm.load_weights("best_model_rm.hdf5")
-#Train model
-for epochs, lr in zip([100],[1e-2]):
-    print(epochs,lr)
-    model.train_rm_model(x, epochs, batch_size = 1024, patience = [5,11], lr = lr)
-
-model.model_rm.load_weights("best_model_rm.hdf5")
-
-#Look at RM-cvar prediction and empirical cvar
-test = model.model_rm.predict(x)
-print('model w:', test[0,1])
-print('model_rm cvar:',model.get_J(x))
-
-#Test CVAR network
-test1 = - model.model.predict(x) 
-print('emp cvar (in sample):',np.mean(test1[np.quantile(test1,alpha) <= test1]))
-
-cvar = lambda w: w + np.mean(np.maximum(test1 - w,0) / (1- alpha))
-xs = np.linspace(0,option_price*2,10000)
-plt.plot(xs, [cvar(x) for x in xs])
-plt.show()
-print('emp cvar2 (in sample):',np.min([cvar(x) for x in xs]))
-print('w:',xs[np.argmin([cvar(x) for x in xs])])
-
-#Find zero cvar init_pf
-init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
-
-pnl_0p0 = model.model.predict(x) 
-pnl_from_p0 = lambda p0, max_include: pnl_0p0[:max_include,:] + banks[:max_include,-1] * p0
-
-def cvar_from_p0(p0): 
-    tmp_loss = - pnl_from_p0(p0, min([n_samples, int(2**12)]))
-    return np.mean(tmp_loss[np.quantile(tmp_loss,alpha) <= tmp_loss])
-
-def binary_search(func,a,b, delta = 1e-6):
-    a = a
-    b = b
-    tmp_delta = b - a
-
-    while tmp_delta > delta:
-        m = (b-a) / 2 + a
-        f_m = func(m)
-        
-        #print(a,b,m,f_m)
-        
-        if f_m < 0:
-            b = m
-        else:
-            a = m
-        
-        tmp_delta= b - a
-        
-    return (b-a)/2 + a
-    
-init_pf_nn2 = model.get_init_pf() + binary_search(cvar_from_p0,init_pf_nn * 0, init_pf_nn * 2, delta = 1e-6)
-
-print("init_pf1:",init_pf_nn)
-print("init_pf2:",init_pf_nn2)
+# =============================================================================
+# #Create NN model
+# model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+#                                         n_layers = 3, n_units = 4, 
+#                                         activation = 'elu', final_activation = None)
+# model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
+#                    ignore_rates = True) 
+# 
+# #Train model
+# for epochs, lr in zip([100],[1e-2]):
+#     print(epochs,lr)
+#     model_mse.train_model(x, y, batch_size = 1024, epochs = epochs, patience = [5,11], learning_rate = lr)
+# 
+# model_mse.model.load_weights("best_model.hdf5")
+# model_mse.model.trainable = False
+# 
+# 
+# # =============================================================================
+# # model_mse.create_rm_model(alpha = alpha)
+# # 
+# # for epochs, lr in zip([20,10],[1e-2]):
+# #     print(epochs,lr)
+# #     model_mse.train_rm_model(x, epochs, batch_size = 1024, lr = lr)
+# # =============================================================================
+# 
+# #Create NN model with rm
+# model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+#                                         n_layers = 3, n_units = 4, 
+#                                         activation = 'elu', final_activation = None)
+# model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
+#                     ignore_rates = True)
+# 
+# model.create_rm_model(alpha = alpha)
+# 
+# #model.model_rm.load_weights("best_model_rm.hdf5")
+# #Train model
+# for epochs, lr in zip([100],[1e-2]):
+#     print(epochs,lr)
+#     model.train_rm_model(x, epochs, batch_size = 1024, patience = [5,11], lr = lr)
+# 
+# model.model_rm.load_weights("best_model_rm.hdf5")
+# 
+# #Look at RM-cvar prediction and empirical cvar
+# test = model.model_rm.predict(x)
+# print('model w:', test[0,1])
+# print('model_rm cvar:',model.get_J(x))
+# 
+# #Test CVAR network
+# test1 = - model.model.predict(x) 
+# print('emp cvar (in sample):',np.mean(test1[np.quantile(test1,alpha) <= test1]))
+# 
+# cvar = lambda w: w + np.mean(np.maximum(test1 - w,0) / (1- alpha))
+# xs = np.linspace(0,option_price*2,10000)
+# plt.plot(xs, [cvar(x) for x in xs])
+# plt.show()
+# print('emp cvar2 (in sample):',np.min([cvar(x) for x in xs]))
+# print('w:',xs[np.argmin([cvar(x) for x in xs])])
+# 
+# #Find zero cvar init_pf
+# init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
+# 
+# pnl_0p0 = model.model.predict(x) 
+# pnl_from_p0 = lambda p0, max_include: pnl_0p0[:max_include,:] + banks[:max_include,-1] * p0
+# 
+# def cvar_from_p0(p0): 
+#     tmp_loss = - pnl_from_p0(p0, min([n_samples, int(2**12)]))
+#     return np.mean(tmp_loss[np.quantile(tmp_loss,alpha) <= tmp_loss])
+# 
+# def binary_search(func,a,b, delta = 1e-6):
+#     a = a
+#     b = b
+#     tmp_delta = b - a
+# 
+#     while tmp_delta > delta:
+#         m = (b-a) / 2 + a
+#         f_m = func(m)
+#         
+#         #print(a,b,m,f_m)
+#         
+#         if f_m < 0:
+#             b = m
+#         else:
+#             a = m
+#         
+#         tmp_delta= b - a
+#         
+#     return (b-a)/2 + a
+#     
+# init_pf_nn2 = model.get_init_pf() + binary_search(cvar_from_p0,init_pf_nn * 0, init_pf_nn * 2, delta = 1e-6)
+# 
+# print("init_pf1:",init_pf_nn)
+# print("init_pf2:",init_pf_nn2)
+# =============================================================================
 
 
 #Hedge simulations with fitted model
 init_pf = option_price
 
-N_hedge_samples = 10000
+N_hedge_samples = 500
 
 #create portfolios
-models = [s_model, model, model_mse]
-model_names = [run, "NN Risk", "NN MSE"]
+#models = [s_model, model, model_mse]
+#model_names = [run, "NN Risk", "NN MSE"]
 
-#models = [s_model]
-#model_names = [run]
+models = [s_model]
+model_names = [run]
 
 #create hedge experiment engine
 hedge_engine = HedgeEngineClass.HedgeEngineClass(n, s_model, models, option_por)
@@ -242,8 +250,8 @@ hs_matrix = hedge_engine.hs_matrix
 
 if n_assets == 1:
     #Plot of hedge accuracy
-    tmp_xs = np.linspace(0.5*S0,2*S0)[:,np.newaxis]
-    tmp_option_values = option_por.get_portfolio_payoff(tmp_xs)
+    tmp_xs = np.linspace(0.5*S0,2*S0)
+    tmp_option_values = option_por.get_portfolio_payoff(tmp_xs[:,np.newaxis,np.newaxis])
     
     for pf_vals, name in zip(pf_values, model_names):
         plt.plot(tmp_xs, tmp_option_values)
@@ -291,6 +299,12 @@ for pnl, name in zip(Pnl, model_names):
         plt.title('Worst {} Pnl, Asset: {}'.format(name,i))
         plt.show()
 
+#tmp plot
+worst = np.argmin(Pnl[0])
+Pnl[0][worst]
+plt.plot(times, s_model.spot_hist[worst,0,1:])
+plt.show()
+
 #Plot hs at some time over different spots
 time = 0.5*T
 time_idx = time_idx = int(np.round(time / s_model.dt , 6))
@@ -335,4 +349,8 @@ for pnl, name in zip(Pnl, model_names):
 
 #Turnover
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
+    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
+    
+#Avg transaction costs
+for por, name in zip(hedge_engine.ports, model_names):
+    print('Avg. Transaction Costs ({})'.format(name), np.mean(np.sum(por.tc_hist, axis = 1)))

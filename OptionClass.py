@@ -20,10 +20,16 @@ class Option():
         self.underlying = underlying
         
         if self.name == "call":
-            self.payoff = lambda spot: call_option_payoff(spot, self.params[0])
+            self.payoff = lambda spot: call_option_payoff(spot[:,-1], self.params[0])
         
         if self.name == "put":
-            self.payoff = lambda spot: put_option_payoff(spot, self.params[0])
+            self.payoff = lambda spot: put_option_payoff(spot[:,-1], self.params[0])
+        
+        if self.name == "docall":
+            self.payoff = lambda spot: call_option_payoff(spot[:,-1], self.params[0]) * (np.min(spot,axis=1) > params[2])
+            
+        if self.name == "doput":
+            self.payoff = lambda spot: put_option_payoff(spot[:,-1], self.params[0]) * (np.min(spot,axis=1) > params[2])
         
 class OptionPortfolio():
     def __init__(self, options, units):
@@ -34,6 +40,6 @@ class OptionPortfolio():
         payoff = 0
         for option, units in zip(self.options, self.units):
             tmp_underlying = option.underlying
-            payoff += option.payoff(spots[:,tmp_underlying]) * units
+            payoff += option.payoff(spots[:,tmp_underlying,:]) * units
         
         return payoff

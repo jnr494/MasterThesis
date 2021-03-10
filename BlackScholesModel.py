@@ -8,26 +8,29 @@ Created on Mon Mar  1 12:01:39 2021
 import numpy as np
 from scipy.stats import norm
 import OptionClass
+from BlackScholesFunctions import BScallprice, BSputprice, BSdocallprice, BSdoputprice
 
-def BScallprice(s0, sigma, r, T, K, greek = None):
-    d1 = (np.log(s0 / K) + (r + 0.5 * sigma **2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    
-    Nd1 = norm.cdf(d1)
-    Nd2 = norm.cdf(d2)
-    
-    if greek is None:
-        return s0 * Nd1 - np.exp(-r * T) * K * Nd2 #return price
-    elif greek == "delta":
-        return Nd1 #return delta
-
-def BSputprice(s0, sigma, r, T, K, greek = None):
-    call = BScallprice(s0, sigma, r, T, K, greek)
-    
-    if greek is None:
-        return K * np.exp(-r * T) + call - s0
-    else:
-        return call - 1
+# =============================================================================
+# def BScallprice(s0, sigma, r, T, K, greek = None):
+#     d1 = (np.log(s0 / K) + (r + 0.5 * sigma **2) * T) / (sigma * np.sqrt(T))
+#     d2 = d1 - sigma * np.sqrt(T)
+#     
+#     Nd1 = norm.cdf(d1)
+#     Nd2 = norm.cdf(d2)
+#     
+#     if greek is None:
+#         return s0 * Nd1 - np.exp(-r * T) * K * Nd2 #return price
+#     elif greek == "delta":
+#         return Nd1 #return delta
+# 
+# def BSputprice(s0, sigma, r, T, K, greek = None):
+#     call = BScallprice(s0, sigma, r, T, K, greek)
+#     
+#     if greek is None:
+#         return K * np.exp(-r * T) + call - s0
+#     else:
+#         return call - 1
+# =============================================================================
 
 class BlackScholesModel():
     def __init__(self,S0, mu, sigma, corr, rate, dt, n = 1, n_assets = 1):
@@ -107,6 +110,26 @@ class BlackScholesModel():
                 
                 price += tmp_price * units
             
+            if tmp_name == "docall":
+                strike = option.params[0]
+                maturity = option.params[1]
+                boundary = option.params[2]
+                
+                tmp_price = BSdocallprice(self.S0[tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity, strike, boundary)
+                
+                price += tmp_price * units
+            
+            if tmp_name == "doput":
+                strike = option.params[0]
+                maturity = option.params[1]
+                boundary = option.params[2]
+                
+                tmp_price = BSdoputprice(self.S0[tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity, strike, boundary)
+                
+                price += tmp_price * units
+            
         return price
 # =============================================================================
 #         if name == "call":
@@ -120,7 +143,12 @@ class BlackScholesModel():
             
         return None
     
-    def get_optimal_hs(self, time, spot):
+    def get_optimal_hs(self, time, spot_hist):
+        if len(spot_hist.shape) == 2:
+            spot_hist = spot_hist[...,np.newaxis]
+        
+        spot = spot_hist[...,-1]
+        
         hs = np.zeros((len(spot),self.n_assets))
         for option, units in zip(self.option_por.options, self.option_por.units):
             tmp_name = option.name
@@ -144,10 +172,34 @@ class BlackScholesModel():
                 
                 hs[:,tmp_under] += tmp_hs * units
             
+            if tmp_name == "docall":
+                strike = option.params[0]
+                maturity = option.params[1]
+                boundary = option.params[2]
+                
+                indicator = np.min(spot_hist[:,tmp_under,:], axis = -1) > boundary
+                
+                tmp_hs = BSdocallprice(spot[:,tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity - time, strike, boundary, "delta")
+                
+                hs[:,tmp_under] += indicator * tmp_hs * units
+            
+            if tmp_name == "doput":
+                strike = option.params[0]
+                maturity = option.params[1]
+                boundary = option.params[2]
+                
+                indicator = np.min(spot_hist[:,tmp_under,:], axis = -1) > boundary
+                
+                tmp_hs = BSdoputprice(spot[:,tmp_under], self.sigma[tmp_under], self.rate0, 
+                                     maturity - time, strike, boundary, "delta")
+                
+                hs[:,tmp_under] += indicator * tmp_hs * units
+            
         return hs
         
     def get_current_optimal_hs(self, *args):
-        return self.get_optimal_hs(self.time, self.spot)
+        return self.get_optimal_hs(self.time, self.spot_hist)
     
 if __name__ == "__main__":
     mu = np.array([0.02, 0.03, 0.01])
