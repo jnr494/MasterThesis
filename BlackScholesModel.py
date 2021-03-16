@@ -10,28 +10,6 @@ from scipy.stats import norm
 import OptionClass
 from BlackScholesFunctions import BScallprice, BSputprice, BSdocallprice, BSdoputprice
 
-# =============================================================================
-# def BScallprice(s0, sigma, r, T, K, greek = None):
-#     d1 = (np.log(s0 / K) + (r + 0.5 * sigma **2) * T) / (sigma * np.sqrt(T))
-#     d2 = d1 - sigma * np.sqrt(T)
-#     
-#     Nd1 = norm.cdf(d1)
-#     Nd2 = norm.cdf(d2)
-#     
-#     if greek is None:
-#         return s0 * Nd1 - np.exp(-r * T) * K * Nd2 #return price
-#     elif greek == "delta":
-#         return Nd1 #return delta
-# 
-# def BSputprice(s0, sigma, r, T, K, greek = None):
-#     call = BScallprice(s0, sigma, r, T, K, greek)
-#     
-#     if greek is None:
-#         return K * np.exp(-r * T) + call - s0
-#     else:
-#         return call - 1
-# =============================================================================
-
 class BlackScholesModel():
     def __init__(self,S0, mu, sigma, corr, rate, dt, n = 1, n_assets = 1):
         self.S0 = S0 * np.ones(n_assets)
@@ -68,6 +46,10 @@ class BlackScholesModel():
         self.bank_hist = np.append(self.bank_hist, self.bank[...,np.newaxis], -1)
         self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
         
+        #update min max
+        self.min_spot = np.minimum(self.min_spot, self.spot)
+        self.max_spot = np.maximum(self.max_spot, self.spot)
+        
         return self.spot, self.bank, self.time
 
     def reset_model(self, n = None):
@@ -82,7 +64,10 @@ class BlackScholesModel():
          self.spot_hist = np.array(self.spot)[...,np.newaxis] #Applying np.array to make the arrays independent
          self.bank_hist = np.array(self.bank)[...,np.newaxis]
          self.rate_hist = np.array(self.rate)[...,np.newaxis]
-
+         
+         #min max
+         self.min_spot = np.array(self.spot)
+         self.max_spot = np.array(self.spot)
 
     def init_option(self, option_por):
         self.option_por = option_por

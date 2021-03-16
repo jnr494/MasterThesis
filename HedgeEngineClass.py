@@ -54,3 +54,4 @@ class HedgeEngineClass():
         self.option_values = self.option_por.get_portfolio_payoff(self.spot_hist)
         
         self.Pnl = [np.array(pf_val) - np.array(self.option_values) for pf_val in self.pf_values]
+        self.Pnl_disc = np.array(self.Pnl) / self.s_model.bank

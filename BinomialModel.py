@@ -51,6 +51,10 @@ class Binom_model():
         self.bank_hist = np.append(self.bank_hist, self.bank[...,np.newaxis], -1)
         self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
         
+        #update min max
+        self.min_spot = np.minimum(self.min_spot, self.spot)
+        self.max_spot = np.maximum(self.max_spot, self.spot)
+        
         return self.spot, self.bank, self.time
 
     def reset_model(self, n = None):
@@ -68,7 +72,11 @@ class Binom_model():
          
          self.no_d = np.zeros(self.spot.shape)
          self.no_u = np.zeros(self.spot.shape)
-    
+         
+         #min max
+         self.min_spot = np.array(self.spot)
+         self.max_spot = np.array(self.spot)
+         
     def init_option(self, option_por):
         maturity = option_por.options[0].params[1]
         self.optimal_hedge_setup(maturity)
@@ -76,7 +84,7 @@ class Binom_model():
         self.mat_spots = np.array([self.S0*self.optimal_hedge.u**(self.optimal_hedge.n-i) * self.optimal_hedge.d**(i) 
                                    for i in range(self.optimal_hedge.n+1)])[:,np.newaxis]
         
-        tmp_option_payoffs = option_por.get_portfolio_payoff(self.mat_spots)
+        tmp_option_payoffs = option_por.get_portfolio_payoff(self.mat_spots[...,np.newaxis])
         
         option_price = self.optimal_hedge.calculate_hedge_price(tmp_option_payoffs)
         

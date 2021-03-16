@@ -178,6 +178,10 @@ class HestonModel():
         self.bank_hist = np.append(self.bank_hist, self.bank[...,np.newaxis], -1)
         self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
         
+        #update min max
+        self.min_spot = np.minimum(self.min_spot, self.spot1)
+        self.max_spot = np.maximum(self.max_spot, self.spot1)
+        
         return self.spot, self.bank, self.time
 
     def reset_model(self, n = None):
@@ -197,11 +201,15 @@ class HestonModel():
          #print(self.spot1.shape, second_asset_value.shape)
          self.spot = np.hstack((self.spot1, second_asset_value))
          
+         #hist
          self.spot_hist = np.array(self.spot)[...,np.newaxis] #Applying np.array to make the arrays independent
          self.v_hist = np.array(self.v)[...,np.newaxis]
          self.bank_hist = np.array(self.bank)[...,np.newaxis]
          self.rate_hist = np.array(self.rate)[...,np.newaxis]
-
+         
+         #min max
+         self.min_spot = np.array(self.spot1)
+         self.max_spot = np.array(self.spot1)
 
     def init_option(self, option_por):
         self.option_por = option_por
