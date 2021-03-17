@@ -7,10 +7,11 @@ Created on Tue Mar 16 10:09:16 2021
 
 import numpy as np
 
-def generate_dataset(s_model, n_steps, n_samples, option_por):
-    s_model.reset_model(n_samples)
-    for j in range(n_steps):
-        s_model.evolve_s_b()
+def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
+    if new is True:
+        s_model.reset_model(n_samples)
+        for j in range(n_steps):
+            s_model.evolve_s_b()
     
     spots = s_model.spot_hist
     banks = s_model.bank_hist

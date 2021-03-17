@@ -411,7 +411,10 @@ class NN_simple_hedge():
 
         
     def get_J(self, x):
-        rm_outputs = self.model_rm.predict(x)
+        len_x = len(x)
+        batch_size = min([len_x , int(2**15)])
+        rm_outputs = self.model_rm.predict(x, batch_size = batch_size)
+        
         
         return rm_outputs[0,1] + np.mean(rm_outputs[:,0])
     

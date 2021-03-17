@@ -102,9 +102,9 @@ model_mse.model.load_weights("best_model.hdf5")
 model_price = model_mse.get_init_pf()
 
 #Hedge simulations with fitted model
-init_pf = option_price
+init_pf = model_price #option_price
 
-N_hedge_samples = 10000
+N_hedge_samples = 50000
 
 #create portfolios
 models = [s_model, model_mse]
@@ -125,21 +125,25 @@ hs_matrix = hedge_engine.hs_matrix
 
 #Output
 #Option price and learned price
-print("Option price:", option_price, "Learned price:", model_price, "Dif:", option_price - model_price)
+print("Option price:", option_price, "Learned price:", model_price, "Ratio:", model_price / option_price)
 
+#Avg Pnl
+for pnl, name in zip(Pnl, model_names):
+    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
+          '(',np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),')',
+          np.round(np.mean(pnl)  / option_price * 100,8))
+    
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
-      '(',np.round(np.std(abs(pnl)),5),')',
-      np.round(np.mean(abs(pnl))  / init_pf,5))
+    print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),6), 
+      '(',np.round(np.std(abs(pnl)) / np.sqrt(N_hedge_samples),6),')',
+      np.round(np.mean(abs(pnl))  / option_price * 100,6))
 
 #Avg squared Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),5))
-
-#Avg Pbl
-for pnl, name in zip(Pnl, model_names):
-    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),5))
+    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),6),
+          '(',np.round(np.std(pnl**2) / np.sqrt(N_hedge_samples),6),')',
+          np.round(np.mean(pnl**2)  / option_price * 100,6))
 
 #Calculate CVAR
 for pnl, name in zip(Pnl, model_names):
@@ -159,6 +163,8 @@ for por, name in zip(hedge_engine.ports, model_names):
 #PLOTS
 ######
 
+dpi = 500
+
 #Plot of hedge accuracy
 tmp_xs = np.linspace(0.5*S0,2*S0)
 tmp_option_values = option_por.get_portfolio_payoff(tmp_xs[:,np.newaxis,np.newaxis])
@@ -169,7 +175,7 @@ for pf_vals, name in zip(pf_values[1:], model_names[1:]):
     #plt.title("Hedge Accuracy")
     plt.xlabel("$S_N$")
     plt.legend()
-    plt.savefig("ex1_hedge_acc.eps", bbox_inches='tight')
+    plt.savefig("ex1_hedge_acc.png", bbox_inches='tight', dpi = dpi)
     plt.show()
     plt.close()
 
@@ -178,7 +184,7 @@ for pnl, name in zip(Pnl[1:], model_names[1:]):
     #plt.title("NN Model Pnl")
     plt.legend()
     plt.xlabel("$S_N$")
-    plt.savefig("ex1_model_pnl.eps", bbox_inches='tight')
+    plt.savefig("ex1_model_pnl.png", bbox_inches='tight', dpi = dpi)
     plt.show()
     plt.close()
     

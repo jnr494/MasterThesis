@@ -13,6 +13,10 @@ import sys
 sys.path.insert(1, os.path.dirname(os.getcwd()))
 
 import numpy as np
+import gc
+from tqdm import tqdm
+
+
 import helper_functions
 import nearPD
 import HedgeEngineClass
@@ -25,7 +29,7 @@ import matplotlib.pyplot as plt
 tf.config.set_visible_devices([], 'GPU')
 
 
-n = 10  # 60
+n = 60  # 60
 rate = 0.02
 rate_change = 0
 T = 3/12
@@ -38,11 +42,15 @@ S0 = 1
 
 run = "BS"
 
-exp_nr = 0  # Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 1
+train_models = True
+
 
 # Exp 3.x settings
 if exp_nr == 0:
     tc = 0
+elif exp_nr == 1:
+    tc = 0.005
 
 if run == "BS":
     n_assets = 4
@@ -80,11 +88,31 @@ if run == "BS":
 option_price = s_model.init_option(option_por)
 
 # Create sample paths
-N = 16  # 18
+N = 18  # 18
 n_samples = 2**N
 
+np.random.seed(69420)
 x, y, banks = helper_functions.generate_dataset(
     s_model, n, n_samples, option_por)
+
+#Samples with 0 correlation
+corr0 = np.identity(n_assets)
+s_model.corr = corr0
+
+np.random.seed(69420)
+x0, y0, banks0 = helper_functions.generate_dataset(
+    s_model, n, n_samples, option_por)
+
+#Samples with 0.5 correlation
+corr05 = 0.5 * corr + 0.5 * corr0
+s_model.corr = corr05
+
+np.random.seed(69420)
+x05, y05, banks05 = helper_functions.generate_dataset(
+    s_model, n, n_samples, option_por)
+
+#reset corr
+s_model.corr = corr
 
 ############
 # NN models
@@ -96,37 +124,68 @@ tf.random.set_seed(69)
 
 
 # Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+model1 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
                                         n_layers=n_layers, n_units=n_units,
                                         activation='elu', final_activation=None,
                                         output2_dim=1)
 
-model.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
+model1.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
                    ignore_rates=True, ignore_minmax=True, ignore_info=True)
 
-model.create_rm_model(alpha=alpha)
+model1.create_rm_model(alpha=alpha)
+
+# Create NN model with rm - 0 correlation
+model0 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+                                        n_layers=n_layers, n_units=n_units,
+                                        activation='elu', final_activation=None,
+                                        output2_dim=1)
+
+model0.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
+                   ignore_rates=True, ignore_minmax=True, ignore_info=True)
+
+model0.create_rm_model(alpha=alpha)
+
+# Create NN model with rm - 0.5 correlation
+model05 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+                                        n_layers=n_layers, n_units=n_units,
+                                        activation='elu', final_activation=None,
+                                        output2_dim=1)
+
+model05.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
+                   ignore_rates=True, ignore_minmax=True, ignore_info=True)
+
+model05.create_rm_model(alpha=alpha)
 
 # Training models
-train_models = True
-
-best_model_name = "best_model_rm_3_{}.hdf5".format(exp_nr)
+best_model_name1 = "best_model1_rm_3_{}.hdf5".format(exp_nr)
+best_model_name0 = "best_model0_rm_3_{}.hdf5".format(exp_nr)
+best_model_name05 = "best_model05_rm_3_{}.hdf5".format(exp_nr)
 
 
 if train_models is True:
     # train CVaR
-    model.train_rm_model(x, epochs=100, batch_size=1024, patience=[5, 11], lr=0.01,
-                         best_model_name=best_model_name)
+    for x, model, name in zip([x,x0,x05],[model1,model0, model05], 
+                              [best_model_name1, best_model_name0, best_model_name05]):
+        model.train_rm_model(x, epochs=100, batch_size=1024, patience=[5, 11], lr=0.01,
+                             best_model_name = name)
 
-model.model_rm.load_weights(best_model_name)
+model1.model_rm.load_weights(best_model_name1)
+model0.model_rm.load_weights(best_model_name0)
+model05.model_rm.load_weights(best_model_name05)
+
+#del x0 and x05
+del x0, y0, banks0
+del x05, y05, banks05
+gc.collect()
 
 
 # Look at RM-cvar prediction and empirical cvar
-test = model.model_rm.predict(x)
+test = model1.model_rm.predict(x)
 print('model w:', test[0, 1])
-print('model_rm cvar:', model.get_J(x))
-
+print('model_rm cvar:', model1.get_J(x))
+ 
 # Test CVAR network
-test1 = - model.model.predict(x)
+test1 = - model1.model.predict(x)
 print('emp cvar (in sample):', np.mean(
     test1[np.quantile(test1, alpha) <= test1]))
 
@@ -141,7 +200,7 @@ print('emp cvar2 (in sample):', np.min([cvar(x) for x in xs]))
 print('w:', xs[np.argmin([cvar(x) for x in xs])])
 
 # Find zero cvar init_pf
-init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
+init_pf_nn = model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T)
 
 # Hedge simulations with fitted model
 init_pf = option_price
@@ -149,13 +208,13 @@ init_pf = option_price
 N_hedge_samples = 50000
 
 # create portfolios
-models = [s_model, model]
-model_names = ["Analytical", "NN CVaR {}".format(alpha)]
+models = [s_model, model1, model0, model05]
+model_names = ["Analytical", "NN CVaR {}".format(alpha), "NN0 CVaR {}".format(alpha), "NN05 CVaR {}".format(alpha)]
 
 #models = [s_model]
 #model_names = [run]
 
-# create hedge experiment engine
+# create hedge experiment engine 
 np.random.seed(420)
 hedge_engine = HedgeEngineClass.HedgeEngineClass(
     n, s_model, models, option_por)
@@ -170,6 +229,9 @@ option_values = hedge_engine.option_values
 Pnl = hedge_engine.Pnl_disc
 hs_matrix = hedge_engine.hs_matrix
 
+
+gc.collect()
+
 #################
 # Plots
 #################
@@ -180,7 +242,20 @@ dpi = 500
 for i in range(1):
     for j in range(n_assets):
         times = np.arange(n)/n
-        for hs_m, name, ls in zip(hs_matrix, model_names, ["-", "--", "--"]):
+        for hs_m, name, ls in zip(hs_matrix, model_names, ["-", "--", "--","--"]):
+            plt.plot(times, hs_m[i, j, :], ls, label=name, lw=2)
+        plt.legend()
+        plt.xlabel("time")
+        plt.ylabel("Units of $S$")
+        plt.savefig("ex3_{}_hsfull_asset_{}_sample_{}.eps".format(
+            exp_nr, j, i), bbox_inches='tight')
+        plt.show()
+        plt.close()
+
+for i in range(1):
+    for j in range(n_assets):
+        times = np.arange(n)/n
+        for hs_m, name, ls in zip(hs_matrix[:2], model_names[:2], ["-", "--"]):
             plt.plot(times, hs_m[i, j, :], ls, label=name, lw=2)
         plt.legend()
         plt.xlabel("time")
@@ -189,6 +264,8 @@ for i in range(1):
             exp_nr, j, i), bbox_inches='tight')
         plt.show()
         plt.close()
+
+        
 
 # Plot pnls on bar chart
 for i in range(1, len(model_names)):
@@ -207,7 +284,9 @@ for i in range(1, len(model_names)):
 ###########
 
 # option price and p0
-print("NN Risk p0:", model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
+print("NN Risk p0:", model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
+#print("NN0 Risk p0:", model0.get_init_pf() + model0.get_J(x) * np.exp(-rate * T))
+#print("NN0 Risk p0:", model05.get_init_pf() + model05.get_J(x) * np.exp(-rate * T))
 print("Option price:", option_price)
 
 # Avg abs Pnl
@@ -269,18 +348,31 @@ original_avg_abs_pnl = get_avg_abs_pnl(Pnl)
 original_avg_sq_pnl = get_avg_sq_pnl(Pnl)
 original_oos_cvar = get_oos_cvar(Pnl)
 
-N_runs = 50
-avg_pnl = np.zeros((N_runs, 2))
-avg_abs_pnl = np.zeros_like(avg_pnl)
-avg_sq_pnl = np.zeros_like(avg_pnl)
-oos_cvar = np.zeros_like(avg_pnl)
+N_runs = 500
+N_hedge_samples = 1000
+shocks = [0,0.05,0.1,0.15]
 
-N_hedge_samples = 10000
+avg_pnl_shocks = np.zeros((len(shocks), len(models)))
+avg_abs_pnl_shocks = np.zeros_like(avg_pnl_shocks)
+avg_sq_pnl_shocks = np.zeros_like(avg_pnl_shocks)
+oos_cvar_shocks = np.zeros_like(avg_pnl_shocks)
+
+avg_pnl_shocks_std = np.zeros_like(avg_pnl_shocks)
+avg_abs_pnl_shocks_std = np.zeros_like(avg_pnl_shocks)
+avg_sq_pnl_shocks_std = np.zeros_like(avg_pnl_shocks)
+oos_cvar_shocks_std = np.zeros_like(avg_pnl_shocks)
 
 np.random.seed(69*2)
-for shock in [0,0.02,0.04,0.06,0.08,0.1]:
+for index, shock in enumerate(shocks):
     
-    for k in range(N_runs):
+    print(index,shock)
+    
+    tmp_avg_pnl = np.zeros((N_runs, len(models)))
+    tmp_avg_abs_pnl = np.zeros_like(tmp_avg_pnl)
+    tmp_avg_sq_pnl = np.zeros_like(tmp_avg_pnl)
+    tmp_oos_cvar = np.zeros_like(tmp_avg_pnl)
+    
+    for k in tqdm(range(N_runs)):
         #print(k)
         # get new corr
         new_corr = np.array(corr)
@@ -305,23 +397,33 @@ for shock in [0,0.02,0.04,0.06,0.08,0.1]:
             n, s_model, models, option_por)
     
         # run hedge experiment
-        hedge_engine.run_hedge_experiment(N_hedge_samples, init_pf, tc)
+        hedge_engine.run_quick_hedge_exp(N_hedge_samples, init_pf, tc)
     
         # get tmp Pnl
         tmp_Pnl = hedge_engine.Pnl_disc
     
         # save tmp_Pnl
-        avg_pnl[k, :] = get_avg_pnl(tmp_Pnl)
-        avg_abs_pnl[k, :] = get_avg_abs_pnl(tmp_Pnl)
-        avg_sq_pnl[k, :] = get_avg_sq_pnl(tmp_Pnl)
-        oos_cvar[k, :] = get_oos_cvar(tmp_Pnl)
+        tmp_avg_pnl[k, :] = get_avg_pnl(tmp_Pnl)
+        tmp_avg_abs_pnl[k, :] = get_avg_abs_pnl(tmp_Pnl)
+        tmp_avg_sq_pnl[k, :] = get_avg_sq_pnl(tmp_Pnl)
+        tmp_oos_cvar[k, :] = get_oos_cvar(tmp_Pnl)
+        
+        
+        gc.collect()
     
+    avg_pnl_shocks[index,:] = np.mean(tmp_avg_pnl, axis = 0)
+    avg_abs_pnl_shocks[index,:] = np.mean(tmp_avg_abs_pnl, axis = 0)
+    avg_sq_pnl_shocks[index,:] = np.mean(tmp_avg_sq_pnl, axis = 0)
+    oos_cvar_shocks[index,:] = np.mean(tmp_oos_cvar, axis = 0)
+    
+    avg_pnl_shocks_std[index,:] = np.std(tmp_avg_pnl, axis = 0)
+    avg_abs_pnl_shocks_std[index,:] = np.std(tmp_avg_abs_pnl, axis = 0)
+    avg_sq_pnl_shocks_std[index,:] = np.std(tmp_avg_sq_pnl, axis = 0)
+    oos_cvar_shocks_std[index,:] = np.std(tmp_oos_cvar, axis = 0)
+    
+       
     
     # reset s_model
     s_model.corr = corr
-    print("Shock:",shock)
-    for name, opnl, npnl in zip(["Avg pnl", "Avg abs pnl", "Avg squared pnl", "Oos CVAR"],
-                                [original_avg_pnl, original_avg_abs_pnl,
-                                    original_avg_sq_pnl, original_oos_cvar],
-                                [avg_pnl, avg_abs_pnl, avg_sq_pnl, oos_cvar]):
-        print(name, opnl, np.mean(npnl, axis=0), np.mean(npnl, axis=0) / opnl)
+    
+oos_cvar_shocks_se = oos_cvar_shocks_std / np.sqrt(N_runs)
