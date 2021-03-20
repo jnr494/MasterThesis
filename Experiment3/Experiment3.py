@@ -427,3 +427,6 @@ for index, shock in enumerate(shocks):
     s_model.corr = corr
     
 oos_cvar_shocks_se = oos_cvar_shocks_std / np.sqrt(N_runs)
+
+print("CVAR shocks:", oos_cvar_shocks)
+print("CVAR shocks se", oos_cvar_shocks_se)

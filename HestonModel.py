@@ -83,7 +83,7 @@ def hestonputprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
         return call
 
 class HestonModel():
-    def __init__(self, S0, mu, v0, kappa, theta, sigma, rho, rate, dt, ddt, lambda_ = 0, n = 1):
+    def __init__(self, S0, mu, v0, kappa, theta, sigma, rho, rate, dt, ddt, lambda_ = 0, n = 1, ignore_sa = False):
         self.S0 = S0
         self.mu = mu
         
@@ -106,6 +106,7 @@ class HestonModel():
         self.sa_maturity = 1
         self.sa_strike = S0
         self.use_v = False
+        self.ignore_sa = ignore_sa
         
         self.dt = dt
         self.ddt = dt / np.ceil(dt / ddt)
@@ -118,6 +119,9 @@ class HestonModel():
         self.reset_model()
     
     def second_asset_value(self):
+        if self.ignore_sa is True:
+            return np.zeros_like(self.v)
+        
         if self.use_v is True:
             return self.v
         else:
@@ -128,6 +132,9 @@ class HestonModel():
             return call_prices
     
     def calculate_greeks_second_asset(self, time, spot, v):
+        if self.ignore_sa is True:
+            return np.zeros((self.n,2))
+        
         if self.use_v is True:
             tmp_greek = np.zeros((self.n,2))
             tmp_greek[:,-1] = 1
@@ -179,8 +186,8 @@ class HestonModel():
         self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
         
         #update min max
-        self.min_spot = np.minimum(self.min_spot, self.spot1)
-        self.max_spot = np.maximum(self.max_spot, self.spot1)
+        self.min_spot = np.minimum(self.min_spot, self.spot)
+        self.max_spot = np.maximum(self.max_spot, self.spot)
         
         return self.spot, self.bank, self.time
 
@@ -208,8 +215,8 @@ class HestonModel():
          self.rate_hist = np.array(self.rate)[...,np.newaxis]
          
          #min max
-         self.min_spot = np.array(self.spot1)
-         self.max_spot = np.array(self.spot1)
+         self.min_spot = np.array(self.spot)
+         self.max_spot = np.array(self.spot)
 
     def init_option(self, option_por):
         self.option_por = option_por
@@ -273,11 +280,21 @@ class HestonModel():
                                           kappa = self.kappaQ, theta = self.thetaQ, sigma = self.sigma, rho = self.rho, 
                                           r = self.rate, T = maturity - time, K = strike, greek = "vega")
                 
-            sa_greeks = self.calculate_greeks_second_asset(time, spot, v)
+            tmp_delta = np.squeeze(tmp_delta)
+            tmp_vega = np.squeeze(tmp_vega)
+                
+            sa_greeks = np.squeeze(self.calculate_greeks_second_asset(time, spot, v))
             
+            print(sa_greeks.shape)
             
             #print(tmp_delta[0:5,:],tmp_vega[0:5,:])
-            no_second_asset = tmp_vega / sa_greeks[:,-1]
+            if self.ignore_sa is True:
+                no_second_asset = np.squeeze(np.zeros_like(tmp_vega))
+            else:
+                print(tmp_vega.shape,  sa_greeks[:,-1].shape)
+                no_second_asset = tmp_vega / sa_greeks[:,-1]
+            
+            print(tmp_delta.shape, no_second_asset.shape, (sa_greeks[:,0]).shape, (no_second_asset * sa_greeks[:,0]).shape)
             no_primary_asset = tmp_delta - no_second_asset * sa_greeks[:,0] 
 
             hs[:,tmp_under] += np.squeeze(no_primary_asset * units)

@@ -450,6 +450,8 @@ class NN_simple_hedge():
         new_x = np.column_stack([log_spot, rate * self.ignore_rates, min_spot * self.ignore_minmax,
                                  hs * self.ignore_hs])
         
+        #print(new_x.shape,log_spot.shape, rate.shape, min_spot.shape, hs.shape)
+        
         if type(self.tmp_info) is list or len(self.tmp_info) != len(hs):
             self.tmp_info = np.zeros((len(hs),self.output2_dim))
         

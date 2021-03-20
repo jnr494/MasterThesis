@@ -5,7 +5,7 @@ Created on Tue Mar 16 10:07:50 2021
 @author: mrgna
 """
 
-#Experiment 2.0 Black Scholes with 1 asset and no transaction costs
+#Experiment 2.0 Black Scholes with 1 asset w/wo transaction costs
 
 import os
 import sys

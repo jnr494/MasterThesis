@@ -32,7 +32,7 @@ alpha = 0.9 #confidence level for CVaR
 #Create stock model
 S0 = 1
 
-run = "BS"
+run = "Heston"
 
 
 if run == "BS":
@@ -103,7 +103,7 @@ else:
 option_price = s_model.init_option(option_por)
 
 #Create sample paths 
-N = 16
+N = 15
 n_samples = 2**N
 
 x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_por)
