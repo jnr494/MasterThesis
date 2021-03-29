@@ -67,7 +67,7 @@ def constmodel(input_dim, output_dim, output2_dim = 0):
     else:
         inp2 = Input(shape = (output2_dim,))
         out2 = Dense(output2_dim, activation = None, use_bias = False)(inp[:,0:1] * 0 + 1)
-        return Model(inputs = [inp, inp2], outputs = out)
+        return Model(inputs = [inp, inp2], outputs = [out, out2])
 
 def cvar_loss_func(x, alpha):
     return tf.nn.relu(x) / (1 - alpha)
@@ -114,8 +114,11 @@ def create_submodel(input_dim, output_dim, output2_dim,
                 x = BatchNormalization()(x)
         
         output = Dense(output_dim, activation = final_activation)(x)
-        
-        submodel = Model(inputs = [inputs1, inputs2], outputs = output)
+        if batch_norm is True:
+            output2 = Dense(output2_dim, activation = final_activation)(x)
+            submodel = Model(inputs = [inputs1, inputs2], outputs = [output,output2])
+        else:
+            submodel = Model(inputs = [inputs1, inputs2], outputs = output)
         submodel.summary()
         
         return submodel
@@ -225,8 +228,9 @@ class NN_simple_hedge():
                          dummy_zeros_expanded * self.ignore_hs], 1) #Current hs
         
         #init_info = dummy_zeros
-        hs_0 = self.submodel[time_idx]([I1_0, dummy_zeros_expanded2])
-        tmp_info = self.info_model([I1_0, dummy_zeros_expanded2])
+        hs_0, tmp_info = self.submodel[time_idx]([I1_0, dummy_zeros_expanded2])
+        #print(I1_0.shape, hs_0.shape, tmp_info.shape, dummy_zeros_expanded2.shape)
+        #tmp_info = self.info_model([I1_0, dummy_zeros_expanded2])
         
         tc_0 = tf.math.reduce_sum(tf.math.abs(hs_0) * spots[0], axis = 1, keepdims = True) * self.transaction_costs
 
@@ -241,13 +245,14 @@ class NN_simple_hedge():
         
         if n > 1:
             for i in range(1,n):
+                #print(i)
                 tmp_I1 = tf.concat([tf.math.log(spots[i] + 1), #Spots
                                     rates[i] * self.ignore_rates, #current rates
                                     min_spots[i] * self.ignore_minmax, #Min spots information
                                     hs[-1] * self.ignore_hs], 1) #Current hs
-                
-                tmp_hs = self.submodel[time_idx]([tmp_I1, tmp_info * self.ignore_info])
-                tmp_info = self.info_model([tmp_I1, tmp_info * self.ignore_info])
+                #print(tmp_I1.shape, (tmp_info * self.ignore_info).shape)
+                tmp_hs, tmp_info = self.submodel[time_idx]([tmp_I1, tmp_info * self.ignore_info])
+                #tmp_info = self.info_model([tmp_I1, tmp_info * self.ignore_info])
 
                 tmp_tc = tf.math.reduce_sum(tf.math.abs(tmp_hs - hs[-1]) * spots[i],axis = 1, keepdims = True) * self.transaction_costs
                 tmp_pf = tf.math.reduce_sum(tmp_hs * (spots[i+1] - spots[i]), axis = 1, keepdims = True) + (pf[-1] - tmp_tc)
@@ -442,21 +447,22 @@ class NN_simple_hedge():
     def get_hs(self, time, hs, spot_tilde, rate, min_spot):
         time_idx = int(np.round(time / self.T * self.n, 6))
         
-        if type(time) == int or type(time) == float:
-            time = np.ones_like(rate) * float(time)
+        #if type(time) == int or type(time) == float:
+        #    time = np.ones_like(rate) * float(time)
         
         log_spot = np.log(spot_tilde + 1)
         
         new_x = np.column_stack([log_spot, rate * self.ignore_rates, min_spot * self.ignore_minmax,
                                  hs * self.ignore_hs])
         
-        #print(new_x.shape,log_spot.shape, rate.shape, min_spot.shape, hs.shape)
+        #print(type(self.tmp_info), len(self.tmp_info), time)
+        #print(type(self.tmp_info) is list, len(self.tmp_info) != len(hs), time < 1e-6)
         
-        if type(self.tmp_info) is list or len(self.tmp_info) != len(hs):
+        if type(self.tmp_info) is list or len(self.tmp_info) != len(hs) or time < 1e-6:
             self.tmp_info = np.zeros((len(hs),self.output2_dim))
         
-        tmp_hs = self.submodel[time_idx].predict([new_x, self.tmp_info * self.ignore_info])
-        self.tmp_info = self.info_model.predict([new_x, self.tmp_info * self.ignore_info])
+        tmp_hs, self.tmp_info = self.submodel[time_idx].predict([new_x, self.tmp_info * self.ignore_info])
+        #self.tmp_info = self.info_model.predict([new_x, self.tmp_info * self.ignore_info])
         #print(self.tmp_info)
         return np.squeeze(tmp_hs).reshape(hs.shape)
     

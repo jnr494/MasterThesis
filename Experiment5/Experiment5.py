@@ -25,7 +25,7 @@ import HedgeEngineClass
 import nearPD
 import helper_functions
 
-n = 60 #60
+n = 20 #60
 rate = 0 ###!!!!!!!!!!!!!
 rate_change = 0
 T = 3/12
@@ -37,10 +37,12 @@ S0 = 1
 
 run = "BS"
 
-exp_nr = 0 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 99 #######
 
 #Exp 5.x settings
 tc = 0
+train_models = True
+
 
 if run == "BS":
     n_assets = 1
@@ -66,6 +68,7 @@ if run == "BS":
     #Setup call option with strike 1
     units = [1]
     options = [OptionClass.Option("docall",[S0, T, S0 * 0.95],0)]
+    #options = [OptionClass.Option("call",[S0, T],0)]
     option_por = OptionClass.OptionPortfolio(options,units)
 
 
@@ -102,26 +105,37 @@ model.create_rm_model(alpha = alpha)
 model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
-                                        output2_dim = 1)
+                                        output2_dim = 2)
 
 model1.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
                     ignore_rates = True, ignore_minmax = True, ignore_info = False)
 
 model1.create_rm_model(alpha = alpha)
 
-#Training models
-train_models = True
+model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+                                        n_layers = n_layers, n_units = n_units, 
+                                        activation = 'elu', final_activation = None, 
+                                        output2_dim = 1)
 
+model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
+                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+
+model2.create_rm_model(alpha = alpha)
+
+#Training models
 best_model_name = "best_model_rm_5_{}.hdf5".format(exp_nr)
 best_model_name1 = "best_model1_rm_5_{}.hdf5".format(exp_nr)
+best_model_name2 = "best_model2_rm_5_{}.hdf5".format(exp_nr)
 
 if train_models is True:
     #train CVaR high model   
     model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name)
     model1.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name1)
+    model2.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
     
 model.model_rm.load_weights(best_model_name)
 model1.model_rm.load_weights(best_model_name1)
+model2.model_rm.load_weights(best_model_name2)
 
 #Look at RM-cvar prediction and empirical cvar
 test = model.model_rm.predict(x)
@@ -133,11 +147,12 @@ test1 = - model.model.predict(x)
 print('emp cvar (in sample):',np.mean(test1[np.quantile(test1,alpha) <= test1]))
 
 cvar = lambda w: w + np.mean(np.maximum(test1 - w,0) / (1- alpha))
-xs = np.linspace(0,option_price*2,10000)
+xs = np.linspace(0,option_price*4,10000)
 plt.plot(xs, [cvar(x) for x in xs])
 plt.show()
-print('emp cvar2 (in sample):',np.min([cvar(x) for x in xs]))
-print('w:',xs[np.argmin([cvar(x) for x in xs])])
+min_cvar_x = np.argmin([cvar(x) for x in xs])
+print('emp cvar2 (in sample):',cvar(xs[min_cvar_x]))
+print('w:',xs[min_cvar_x])
 
 #Find zero cvar init_pf
 init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
@@ -148,8 +163,9 @@ init_pf = option_price
 N_hedge_samples = 50000
 
 #create portfolios
-models = [s_model, model, model1]
-model_names = ["Analytical", "NN CVaR {} w. min.-info".format(alpha), "NN CVaR {} w/o min.-info".format(alpha)]
+models = [s_model, model, model1, model2]
+model_names = ["Analytical", "NN CVaR {} w. min.-info".format(alpha), "NN CVaR {} w. memory".format(alpha),
+               "NN CVaR {} raw".format(alpha)]
 
 #models = [s_model]
 #model_names = [run]
@@ -204,7 +220,7 @@ if n_assets == 1:
 for i in range(2):
     for j in range(n_assets):
         times = np.arange(n)/n
-        for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--"]):
+        for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--","--"]):
             plt.plot(times, hs_m[i,j,:], ls, label = name, lw = 2)
         plt.legend()
         plt.xlabel("time")
@@ -260,7 +276,8 @@ for i in range(1,len(model_names)):
 #option price and p0
 print("Exp nr:",exp_nr)
 print("NN CVaR{} w. min.-info p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
-print("NN CVaR{} w/o min.-info p0:".format(alpha), model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
+print("NN CVaR{} w. memory p0:".format(alpha), model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
+print("NN CVaR{} raw p0:".format(alpha), model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T))
 print("Option price:", option_price)
 
 #Avg abs Pnl

@@ -11,7 +11,7 @@ from scipy.interpolate import griddata
 import OptionClass
 import HestonLiptonPrice
 
-def hestoncallprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
+def hestoncallprice_old(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
     if len(np.array(s0).shape) == 0:
         s0 = np.array([s0])
         v0 = np.array([v0])
@@ -71,6 +71,57 @@ def hestoncallprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
     
         #print(np.array(call).shape)
     return np.array(call)
+
+def hestoncallprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
+    if len(np.array(s0).shape) == 0:
+        s0 = np.array([s0])
+        v0 = np.array([v0])
+    
+    if greek is None:
+        tmp_greek = 1
+    elif greek == "delta":
+        tmp_greek = 2
+    elif greek == "vega":
+        tmp_greek = 4
+    
+    grid_size = 50
+    if len(s0) > 2*grid_size**2:
+        min_s = np.min(s0)
+        max_s = np.max(s0)
+        min_v = np.min(v0)
+        max_v = np.max(v0)
+        
+        if abs(max_s - min_s) < 1e-6:
+            tmp_call = HestonLiptonPrice.heston_lipton_callprice(spot = s0[0], timetoexp = T, strike = K, 
+                                                                r = r[0], divyield = 0, V = v0[0], 
+                                                                theta = theta, kappa = kappa, 
+                                                                epsilon = sigma, rho = rho, greek = tmp_greek)
+            call = np.ones(len(s0)) * tmp_call
+        else:
+            spots = min_s + np.arange(0, grid_size) * (max_s - min_s) / (grid_size - 1)
+            vs = min_v + np.arange(0, grid_size) * (max_v - min_v) / (grid_size - 1)
+            
+            spots_total = np.repeat(spots,grid_size)
+            vs_total = np.tile(vs,grid_size)
+            
+            calls = HestonLiptonPrice.heston_lipton_callprice_vec(spot = spots_total, timetoexp = T, strike = K, 
+                                                                  r = r[0], divyield = 0, V = vs_total, 
+                                                                  theta = theta, kappa = kappa, 
+                                                                  epsilon = sigma, rho = rho, greek = tmp_greek)
+            
+            data = np.column_stack((spots_total,vs_total))
+            
+            call = griddata(data, calls, np.hstack((s0,v0)))
+
+        call = call[:,np.newaxis]
+        
+    else:
+        call = HestonLiptonPrice.heston_lipton_callprice_vec(spot = s0, timetoexp = T, strike = K, 
+                                                             r = r[0], divyield = 0, V = v0, 
+                                                             theta = theta, kappa = kappa, 
+                                                             epsilon = sigma, rho = rho, greek = tmp_greek)
+    
+    return call
 
 def hestonputprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None):
     call = hestoncallprice(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = greek)

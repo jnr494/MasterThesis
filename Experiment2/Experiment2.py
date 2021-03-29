@@ -25,7 +25,7 @@ import HedgeEngineClass
 import nearPD
 import helper_functions
 
-n = 60 #60
+n = 10 #60
 rate = 0.02
 rate_change = 0
 T = 3/12
@@ -38,14 +38,17 @@ alpha1 = 0.5 #confidence level for CVaR as comparrison
 S0 = 1
 
 run = "BS"
+train_models = True
 
-exp_nr = 1 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 2 ####### Set 0 for exp 2.0 and 1 for exp 2.1
 
 #Exp 2.x settings
 if exp_nr == 0:
     tc = 0
 elif exp_nr == 1:
     tc = 0.005
+if exp_nr == 2:
+    tc = 0
 
 if run == "BS":
     n_assets = 1
@@ -78,7 +81,7 @@ if run == "BS":
 option_price = s_model.init_option(option_por)
 
 #Create sample paths 
-N = 18 #18
+N = 15 #18
 n_samples = 2**N
 
 x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_por)
@@ -124,7 +127,6 @@ model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0
 model2.create_rm_model(alpha = alpha1)  
 
 #Training models
-train_models = True
 
 best_model_name1 = "best_model_mse_2_{}.hdf5".format(exp_nr)
 best_model_name2 = "best_model_rm_high_2_{}.hdf5".format(exp_nr)
@@ -281,24 +283,30 @@ for i in range(1,len(model_names)):
 
 #option price and p0
 print("Exp nr:",exp_nr)
-print("NN MSE p0:", model_mse.get_init_pf())
-print("NN CVaR{} p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
-print("NN CVaR{} p0:".format(alpha1), model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T))
 print("Option price:", option_price)
+print("NN MSE p0:", model_mse.get_init_pf(), model_mse.get_init_pf() / option_price * 100)
+tmp_p0 = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
+print("NN CVaR{} p0:".format(alpha), tmp_p0, tmp_p0 / option_price * 100)
+tmp_p0 = model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T)
+print("NN CVaR{} p0:".format(alpha1), tmp_p0, tmp_p0 / option_price * 100)
+
 
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
     print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
-      '(',np.round(np.std(abs(pnl)),5),')',
-      np.round(np.mean(abs(pnl))  / init_pf,5))
+      '(',np.round(np.std(abs(pnl)) / np.sqrt(N_hedge_samples),8),')',
+      np.round(np.mean(abs(pnl))  / option_price * 100,5))
 
 #Avg squared Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8))
+    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8),
+    '(',np.round(np.std(pnl**2) / np.sqrt(N_hedge_samples),8),')')
 
 #Avg Pbl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8))
+    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
+    '(', np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),')',
+      np.round(np.mean(pnl) / option_price * 100,5))
 
 #Calculate CVAR high
 for pnl, name in zip(Pnl, model_names):
@@ -314,8 +322,14 @@ for pnl, name in zip(Pnl, model_names):
 
 #Turnover
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
+    tmp_turnover = np.mean(por.turnover, axis = 0)
+    tmp_turnover_std = np.std(por.turnover, axis = 0)
+    print('Avg. Turnover ({})'.format(name), tmp_turnover,
+          '(',tmp_turnover_std / np.sqrt(N_hedge_samples),')')
     
 #Avg transaction costs
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Transaction Costs ({})'.format(name), np.mean(np.sum(por.tc_hist, axis = 1)))
+    tmp_tc = np.mean(np.sum(por.tc_hist, axis = 1))
+    tmp_tc_std = np.std(np.sum(por.tc_hist, axis = 1))
+    print('Avg. Transaction Costs ({})'.format(name), tmp_tc,
+          '(',tmp_tc_std / np.sqrt(N_hedge_samples),')')

@@ -25,7 +25,7 @@ import nearPD
 import helper_functions
 
 n = 20
-rate = 0.02
+rate = 0
 T = 1/12
 
 alpha = 0.95 #confidence level for CVaR
@@ -34,7 +34,7 @@ alpha = 0.95 #confidence level for CVaR
 S0 = 1
 
 run = "Heston"
-exp_nr = 0 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 2 ####### 
 train_models = True
 
 #Exp 2.x settings
@@ -51,7 +51,7 @@ elif exp_nr == 2:
 if run == "Heston":
     np.random.seed(69)
     
-    s_model = HestonModel.HestonModel(S0, mu = 0.03, v0 = 0.09, kappa = 2, theta = 0.09, sigma = 0.3, 
+    s_model = HestonModel.HestonModel(S0, mu = 0.03, v0 = 0.2, kappa = 0.5, theta = 0.2, sigma = 0.5, 
                                       rho = -0.9, rate = rate, dt = T / n, ddt = 0.01, ignore_sa = ignore_sa)
     
     n_true_assets = s_model.n_true_assets
@@ -77,30 +77,42 @@ x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_po
 ############
 
 n_layers = 4
-n_units = 5
+n_units = 8
 tf.random.set_seed(69)
 
 #Create NN model with rm
 model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
-                                        output2_dim = 1)
+                                        output2_dim = 2)
 
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+                    ignore_rates = True, ignore_minmax = True, ignore_info = False)
 
 model.create_rm_model(alpha = alpha)
 
+model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+                                        n_layers = n_layers, n_units = n_units, 
+                                        activation = 'elu', final_activation = None, 
+                                        output2_dim = 1)
+
+model1.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
+                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+
+model1.create_rm_model(alpha = alpha)
+
 #Training models
 
-best_model_name2 = "best_model_rm_4_{}.hdf5".format(exp_nr)
+best_model_name = "best_model_rm_4_{}.hdf5".format(exp_nr)
+best_model_name1 = "best_model1_rm_4_{}.hdf5".format(exp_nr)
 
 if train_models is True:
     #train CVaR high model   
-    model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
-    
-model.model_rm.load_weights(best_model_name2)
- 
+    model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name)
+    model1.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name1)
+
+model.model_rm.load_weights(best_model_name)
+model1.model_rm.load_weights(best_model_name1)
 
 #Look at RM-cvar prediction and empirical cvar
 test = model.model_rm.predict(x)
@@ -124,11 +136,11 @@ init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
 #Hedge simulations with fitted model
 init_pf = option_price
 
-N_hedge_samples = 50000
+N_hedge_samples = 100000
 
 #create portfolios
-models = [s_model, model]
-model_names = ["Analytical", "NN CVaR {}".format(alpha)]
+models = [s_model, model, model1]
+model_names = ["Analytical", "NN CVaR {} w memory".format(alpha), "NN CVaR {} raw".format(alpha)]
 
 #models = [s_model]
 #model_names = [run]
