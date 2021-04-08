@@ -37,7 +37,7 @@ class HedgeEngineClass():
         
         #init rebalance
         for por, m in zip(self.ports, self.models):
-            por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs))
+            por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs, por.pf_value[:,np.newaxis]))
         
         for i in range(self.n):
             #Save hs and time
@@ -51,7 +51,7 @@ class HedgeEngineClass():
             
             if i < self.n - 1:
                 for por, m in zip(self.ports, self.models):
-                    por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs)) 
+                    por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs, por.pf_value[:,np.newaxis])) 
         
         self.pf_values = [por.pf_value for por in self.ports]
         
@@ -76,7 +76,7 @@ class HedgeEngineClass():
         
         #init rebalance
         for por, m in zip(self.ports, self.slow_models):
-            por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs))
+            por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs, por.pf_value[:,np.newaxis]))
         
         for i in range(self.n):
             #Save hs and time
@@ -90,7 +90,7 @@ class HedgeEngineClass():
             
             if i < self.n - 1:
                 for por, m in zip(self.ports, self.slow_models):
-                    por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs)) 
+                    por.rebalance(m.get_current_optimal_hs(self.s_model, por.hs, por.pf_value[:,np.newaxis])) 
         
         self.pf_values_slow = [por.pf_value for por in self.ports]
         
@@ -100,7 +100,7 @@ class HedgeEngineClass():
                                                         option_por = self.option_por, new = False)
         
         #get quick pf values
-        self.PnL_quick = [np.squeeze(model.model.predict(x)) + init_pf * self.s_model.bank 
+        self.PnL_quick = [np.squeeze(model.model.predict(x)) + (init_pf - model.get_init_pf()) * self.s_model.bank
                                 for model in self.quick_models]
                             
         self.hedge_spots = self.s_model.spot

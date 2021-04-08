@@ -25,11 +25,10 @@ import HedgeEngineClass
 import nearPD
 import helper_functions
 
-n = 10 #60
+n = 3 #60
 rate = 0.02
 rate_change = 0
-T = 3/12
-#tc = 0.0 #transaction cost
+T = 3 #3/12
 
 alpha = 0.95 #confidence level for CVaR
 alpha1 = 0.5 #confidence level for CVaR as comparrison
@@ -40,14 +39,15 @@ S0 = 1
 run = "BS"
 train_models = True
 
-exp_nr = 2 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 0 ####### Set 0 for exp 2.0 and 1 for exp 2.1
 
 #Exp 2.x settings
 if exp_nr == 0:
     tc = 0
 elif exp_nr == 1:
     tc = 0.005
-if exp_nr == 2:
+elif exp_nr == 2:
+    rate = 0
     tc = 0
 
 if run == "BS":
@@ -57,6 +57,9 @@ if run == "BS":
     
     mu = np.array([0.05])
     sigma = np.array([0.3])
+    
+    if exp_nr == 2:
+        mu = np.array([0.])
     
     corr = np.ones((n_assets,n_assets))
     for i in range(n_assets):
@@ -81,7 +84,7 @@ if run == "BS":
 option_price = s_model.init_option(option_por)
 
 #Create sample paths 
-N = 15 #18
+N = 18
 n_samples = 2**N
 
 x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_por)
@@ -90,45 +93,52 @@ x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_po
 ## NN models
 ############
 
-n_layers = 4
-n_units = 5
+n_layers = 4 #4
+n_units = 3 #5
 tf.random.set_seed(69)
 
-#Create NN model
-model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+#Create NN model with MSE
+model_mse = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
-model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
-                   ignore_rates = True, ignore_minmax = True, ignore_info = True) 
+model_mse.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price) 
+
+#Create NN model with MSE with pf info
+model_mse2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
+                                        n_layers = n_layers, n_units = n_units, 
+                                        activation = 'elu', final_activation = None, 
+                                        output2_dim = 1)
+
+model_mse2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
+                        ignore_pf = True, ignore_info = False) 
 
 
 #Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
-model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
 
 model.create_rm_model(alpha = alpha)
 
 #Create NN model with rm and lower confidence level
-model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
-model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
 
 model2.create_rm_model(alpha = alpha1)  
 
 #Training models
 
 best_model_name1 = "best_model_mse_2_{}.hdf5".format(exp_nr)
+best_model_name12 = "best_model_mse2_2_{}.hdf5".format(exp_nr)
 best_model_name2 = "best_model_rm_high_2_{}.hdf5".format(exp_nr)
 best_model_name3 = "best_model_rm_low_2_{}.hdf5".format(exp_nr)
 
@@ -136,16 +146,23 @@ if train_models is True:
     #train mse model  
     model_mse.train_model(x, y, batch_size = 1024, epochs = 100, patience = [5,11], learning_rate = 0.01, best_model_name = best_model_name1)
     
+    if not exp_nr == 2:
+        #train mse model2 
+        model_mse2.train_model(x, y, batch_size = 1024, epochs = 100, patience = [5,11], learning_rate = 0.01, best_model_name = best_model_name12)
+        
     #train CVaR high model   
     model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
     
-    #train CVaR low model   
-    model2.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name3)
-    
+    if not exp_nr == 2:
+        #train CVaR low model   
+        model2.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name3)
+        
 
 model_mse.model.load_weights(best_model_name1)
 model.model_rm.load_weights(best_model_name2)
-model2.model_rm.load_weights(best_model_name3)  
+if not exp_nr == 2:
+    model_mse2.model.load_weights(best_model_name12)
+    model2.model_rm.load_weights(best_model_name3)  
 
 #Look at RM-cvar prediction and empirical cvar
 test = model.model_rm.predict(x)
@@ -169,11 +186,16 @@ init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
 #Hedge simulations with fitted model
 init_pf = option_price
 
-N_hedge_samples = 50000
+N_hedge_samples = 100000
 
 #create portfolios
-models = [s_model, model, model_mse, model2]
-model_names = ["Analytical", "NN CVaR {}".format(alpha), "NN MSE", "NN CVaR {}".format(alpha1)]
+models = [s_model, model_mse, model, model2, model_mse2]
+model_names = ["Analytical","NN MSE", "NN CVaR {}".format(alpha), "NN CVaR {}".format(alpha1),
+               "NN MSE w PF info"]
+
+if exp_nr == 2:
+    models = models[:3]
+    model_names = model_names[:3]
 
 #models = [s_model]
 #model_names = [run]
@@ -247,14 +269,14 @@ if n_assets == 1:
     tmp_model_hs = s_model.get_optimal_hs(time,tmp_spots[:,np.newaxis])
     plt.plot(tmp_spots, tmp_model_hs,
              label = "{} hs".format(model_names[0]))
-
-   
-        
+     
     current_hs = np.array([0.5])
+    current_pf = np.array([0.0])
     min_spot = np.array(0)
+    spot_return = np.array(0)
     for m, name in zip(models[1:-1], model_names[1:-1]):
         plt.plot(np.arange(60,180)/100*s_model.S0,
-                 [m.get_hs(time, current_hs, spot_tilde, rate, min_spot) for spot_tilde in tmp_spots_tilde], 
+                 [m.get_hs(time, current_hs, current_pf, spot_tilde, rate, min_spot, spot_return) for spot_tilde in tmp_spots_tilde], 
                  '--', label = "{} hs".format(name))
     
     hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)
@@ -281,30 +303,47 @@ for i in range(1,len(model_names)):
 #Calculations
 ###########
 
+save_output = True
+folder_name = ""
+
+#Print outputs
+if save_output is True:
+    text_file = open(folder_name + "output exp 2_{}, hedge points {}, tc = {}, samples = 2_{}.txt".format(exp_nr,n,tc,N),"w")
+
+def print_overload(*args):
+    str_ = ''
+    for x in args:
+        str_ += " " + str(x)
+    str_ = str_[1:]
+    if save_output is True:
+        text_file.write(str_ + "\n")
+    print(str_)
+
 #option price and p0
-print("Exp nr:",exp_nr)
-print("Option price:", option_price)
-print("NN MSE p0:", model_mse.get_init_pf(), model_mse.get_init_pf() / option_price * 100)
+print_overload("Exp nr:",exp_nr)
+print_overload("hedge points {}, tc = {}, samples = 2**{}".format(n,tc,N))
+print_overload("Option price:", option_price)
+print_overload("NN MSE p0:", model_mse.get_init_pf(), model_mse.get_init_pf() / option_price * 100)
 tmp_p0 = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
-print("NN CVaR{} p0:".format(alpha), tmp_p0, tmp_p0 / option_price * 100)
+print_overload("NN CVaR{} p0:".format(alpha), tmp_p0, tmp_p0 / option_price * 100)
 tmp_p0 = model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T)
-print("NN CVaR{} p0:".format(alpha1), tmp_p0, tmp_p0 / option_price * 100)
+print_overload("NN CVaR{} p0:".format(alpha1), tmp_p0, tmp_p0 / option_price * 100)
 
 
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
+    print_overload("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
       '(',np.round(np.std(abs(pnl)) / np.sqrt(N_hedge_samples),8),')',
       np.round(np.mean(abs(pnl))  / option_price * 100,5))
 
 #Avg squared Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8),
+    print_overload("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8),
     '(',np.round(np.std(pnl**2) / np.sqrt(N_hedge_samples),8),')')
 
 #Avg Pbl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
+    print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
     '(', np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),')',
       np.round(np.mean(pnl) / option_price * 100,5))
 
@@ -312,24 +351,178 @@ for pnl, name in zip(Pnl, model_names):
 for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
-    print('Out of sample CVAR{} ({}):'.format(alpha, name),tmp_cvar)
+    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name),tmp_cvar)
     
 #Calculate CVAR low
 for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha1) <= tmp_loss])
-    print('Out of sample CVAR{} ({}):'.format(alpha1, name),tmp_cvar)
+    print_overload('Out of sample CVAR{} ({}):'.format(alpha1, name),tmp_cvar)
 
 #Turnover
 for por, name in zip(hedge_engine.ports, model_names):
     tmp_turnover = np.mean(por.turnover, axis = 0)
     tmp_turnover_std = np.std(por.turnover, axis = 0)
-    print('Avg. Turnover ({})'.format(name), tmp_turnover,
+    print_overload('Avg. Turnover ({})'.format(name), tmp_turnover,
           '(',tmp_turnover_std / np.sqrt(N_hedge_samples),')')
     
 #Avg transaction costs
 for por, name in zip(hedge_engine.ports, model_names):
     tmp_tc = np.mean(np.sum(por.tc_hist, axis = 1))
     tmp_tc_std = np.std(np.sum(por.tc_hist, axis = 1))
-    print('Avg. Transaction Costs ({})'.format(name), tmp_tc,
+    print_overload('Avg. Transaction Costs ({})'.format(name), tmp_tc,
           '(',tmp_tc_std / np.sqrt(N_hedge_samples),')')
+    
+if save_output is True:
+    text_file.close()
+
+####### Wrong sigma analysis #########
+#### Change sigma
+if exp_nr == 2:
+    sigmas = np.linspace(0.05,0.6,150)
+    N_hedge_samples = 10000
+    
+    new_s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, rate, T / n, n_assets = n_assets)
+    bs_hedger = BlackScholesModel.BShedge(s_model)
+    new_models = [bs_hedger] + models[1:]
+    
+    #s_model.reset_model(N_hedge_samples)
+    
+    def get_avg_pnl(Pnl): return np.array(
+        [np.round(np.mean(pnl), 5) for pnl in Pnl])
+    
+    
+    def get_avg_abs_pnl(Pnl): return np.array(
+        [np.round(np.mean(np.abs(pnl)), 5) for pnl in Pnl])
+    
+    
+    def get_avg_sq_pnl(Pnl): return np.array(
+        [np.round(np.mean(pnl**2), 8) for pnl in Pnl])
+    
+    
+    def get_oos_cvar(Pnl): return np.array(
+        [np.round(np.mean((-pnl)[np.quantile(-pnl, alpha) <= (-pnl)]), 5) for pnl in Pnl])
+    
+    avg_pnls = [[] for _ in range(3)] 
+    avg_abs_pnls = [[] for _ in range(3)]
+    avg_sq_pnls = [[] for _ in range(3)]
+    cvars = [[] for _ in range(3)]   
+    
+    for idx, tmp_sigma in enumerate(sigmas):
+        print(idx, "Runing sigma = {}".format(tmp_sigma))
+        new_s_model.sigma = tmp_sigma
+        
+        np.random.seed(420)
+        tmp_hedge_engine = HedgeEngineClass.HedgeEngineClass(n, new_s_model, new_models, option_por)
+        
+        #run hedge experiment
+        np.random.seed(69)
+        #tmp_hedge_engine.run_hedge_experiment(N_hedge_samples, init_pf, tc)
+        tmp_hedge_engine.run_quick_hedge_exp(N_hedge_samples, init_pf, tc)
+        
+        tmp_Pnl = tmp_hedge_engine.Pnl_disc
+        
+        tmp_avg_pnl = get_avg_pnl(tmp_Pnl)
+        tmp_avg_abs_pnl = get_avg_abs_pnl(tmp_Pnl)
+        tmp_avg_sq_pnl = get_avg_sq_pnl(tmp_Pnl)
+        tmp_cvar = get_oos_cvar(tmp_Pnl)
+        
+        for i in range(3):
+    
+            avg_pnls[i].append(tmp_avg_pnl[i])
+            avg_abs_pnls[i].append(tmp_avg_abs_pnl[i])
+            avg_sq_pnls[i].append(tmp_avg_sq_pnl[i])
+            cvars[i].append(tmp_cvar[i])
+    
+    for tmp_measure, tmp_name in zip([avg_pnls, avg_abs_pnls, cvars], ["Avg. Pnl", "Avg. abs. Pnl", "CvaR 0.95"]):
+        for idx, (name, style) in enumerate(zip(model_names,['-','--','--'])):
+            plt.plot(sigmas,np.array(tmp_measure[idx]), style, label = name)
+        plt.legend()
+        plt.xlabel("$\sigma$")
+        plt.ylabel(tmp_name)
+        plt.savefig("exp2.2 " + tmp_name + ".png", dpi = dpi, bbox_inches='tight')
+        plt.show()
+        
+        for idx, (name, style) in enumerate(zip(model_names,['-','--','--'])):
+            plt.plot(sigmas,np.array(tmp_measure[idx]) - np.array(tmp_measure[0]), style, label = name)
+        plt.legend()
+        plt.xlabel("$\sigma$")
+        plt.ylabel(tmp_name + " diff. from Analytical")
+        plt.savefig("exp2.2 " + tmp_name + " diff.png", dpi = dpi, bbox_inches='tight')
+        plt.show()
+     
+# =============================================================================
+# #Mu exp
+# if exp_nr == 2:
+#     mus = np.linspace(-0.1,0.1,20)
+#     N_hedge_samples = 10000
+#     
+#     new_s_model = BlackScholesModel.BlackScholesModel(1, mu, sigma, corr, rate, T / n, n_assets = n_assets)
+#     bs_hedger = BlackScholesModel.BShedge(s_model)
+#     new_models = [bs_hedger] + models[1:]
+#     
+#     #s_model.reset_model(N_hedge_samples)
+#     
+#     def get_avg_pnl(Pnl): return np.array(
+#         [np.round(np.mean(pnl), 5) for pnl in Pnl])
+#     
+#     
+#     def get_avg_abs_pnl(Pnl): return np.array(
+#         [np.round(np.mean(np.abs(pnl)), 5) for pnl in Pnl])
+#     
+#     
+#     def get_avg_sq_pnl(Pnl): return np.array(
+#         [np.round(np.mean(pnl**2), 8) for pnl in Pnl])
+#     
+#     
+#     def get_oos_cvar(Pnl): return np.array(
+#         [np.round(np.mean((-pnl)[np.quantile(-pnl, alpha) <= (-pnl)]), 5) for pnl in Pnl])
+#     
+#     mu_avg_pnls = [[] for _ in range(3)] 
+#     mu_avg_abs_pnls = [[] for _ in range(3)]
+#     mu_avg_sq_pnls = [[] for _ in range(3)]
+#     mu_cvars = [[] for _ in range(3)]   
+#     
+#     for idx, tmp_mu in enumerate(mus):
+#         print(idx, "Runing mu = {}".format(tmp_mu))
+#         new_s_model.mu = np.array(tmp_mu)
+#         
+#         np.random.seed(420)
+#         tmp_hedge_engine = HedgeEngineClass.HedgeEngineClass(n, new_s_model, new_models, option_por)
+#         
+#         #run hedge experiment
+#         np.random.seed(69)
+#         #tmp_hedge_engine.run_hedge_experiment(N_hedge_samples, init_pf, tc)
+#         tmp_hedge_engine.run_quick_hedge_exp(N_hedge_samples, init_pf, tc)
+#         
+#         tmp_Pnl = tmp_hedge_engine.Pnl_disc
+#         
+#         tmp_avg_pnl = get_avg_pnl(tmp_Pnl)
+#         tmp_avg_abs_pnl = get_avg_abs_pnl(tmp_Pnl)
+#         tmp_avg_sq_pnl = get_avg_sq_pnl(tmp_Pnl)
+#         tmp_cvar = get_oos_cvar(tmp_Pnl)
+#         
+#         for i in range(3):
+#     
+#             mu_avg_pnls[i].append(tmp_avg_pnl[i])
+#             mu_avg_abs_pnls[i].append(tmp_avg_abs_pnl[i])
+#             mu_avg_sq_pnls[i].append(tmp_avg_sq_pnl[i])
+#             mu_cvars[i].append(tmp_cvar[i])
+#     
+#     for tmp_measure, tmp_name in zip([mu_avg_pnls, mu_avg_abs_pnls, mu_cvars], ["Avg. Pnl", "Avg. abs. Pnl", "CvaR 0.95"]):
+#         for idx, (name, style) in enumerate(zip(model_names,['-','--','--'])):
+#             plt.plot(mus,np.array(tmp_measure[idx]), style, label = name, )
+#         plt.legend()
+#         plt.xlabel("$\sigma$")
+#         plt.ylabel(tmp_name)
+#         plt.show()
+#         
+#         for idx, (name, style) in enumerate(zip(model_names,['-','--','--'])):
+#             plt.plot(mus,np.array(tmp_measure[idx]) - np.array(tmp_measure[0]), style, label = name)
+#         plt.legend()
+#         plt.xlabel("$\sigma$")
+#         plt.ylabel(tmp_name + " diff. from Analytical")
+#         plt.show()
+# 
+# 
+# =============================================================================

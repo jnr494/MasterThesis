@@ -19,8 +19,9 @@ def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     
     spots_tilde = spots / banks[:,np.newaxis,:]
     
-    #extra infomation (for pathdependence)
+    #extra infomation (for pathdependence and heston)
     min_spots = np.minimum.accumulate(spots,axis = -1)
+    spot_returns = np.concatenate((np.ones_like(spots[...,0:1]), spots[...,1:-1] / (spots[...,:-2]+1e-8)), axis = -1)
     
     #Get option payoffs from samples
     option_payoffs = option_por.get_portfolio_payoff(spots)[:,np.newaxis]
@@ -29,6 +30,7 @@ def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     x = [spots_tilde[...,i]  for i in range(n_steps+1)] \
         + [rates[:,i:(i+1)]  for i in range(n_steps)] \
         + [min_spots[...,i] for i in range(n_steps)] \
+        + [spot_returns[...,i] for i in range(n_steps)] \
         + [banks[:,-1:],option_payoffs]
         
     x = np.column_stack(x)

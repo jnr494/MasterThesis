@@ -1,0 +1,41 @@
+Exp nr: 0
+hedge points 3, tc = 0, samples = 2**19
+Option price: 0.6643881797790527
+NN MSE p0: 0.6643882 100.0
+NN CVaR0.95 p0: 0.9407040812532368 141.58952700905593
+NN CVaR0.5 p0: 0.8102101375268366 121.94830705691935
+Avg abs PnL (Analytical): 0.16559 ( 0.00119645 ) 24.92354
+Avg abs PnL (NN MSE): 0.191 ( 0.00066486 ) 28.74832
+Avg abs PnL (NN CVaR 0.95): 0.23282 ( 0.00058373 ) 35.0427
+Avg abs PnL (NN CVaR 0.5): 0.15915 ( 0.00084726 ) 23.95432
+Avg abs PnL (NN MSE w PF info): 0.18084 ( 0.00073409 ) 27.21899
+Avg squared PnL (Analytical): 0.09899426 ( 0.0056415 )
+Avg squared PnL (NN MSE): 0.05858334 ( 0.00105639 )
+Avg squared PnL (NN CVaR 0.95): 0.07124225 ( 0.00040895 )
+Avg squared PnL (NN CVaR 0.5): 0.06122134 ( 0.00296101 )
+Avg squared PnL (NN MSE w PF info): 0.05964763 ( 0.00625326 )
+Avg PnL (Analytical): -0.00024521 ( 0.00140708 ) -0.03691
+Avg PnL (NN MSE): 0.02068064 ( 0.00107848 ) 3.11273
+Avg PnL (NN CVaR 0.95): 0.03174888 ( 0.00118519 ) 4.77866
+Avg PnL (NN CVaR 0.5): 0.01223567 ( 0.00110518 ) 1.84164
+Avg PnL (NN MSE w PF info): 0.02004084 ( 0.00108854 ) 3.01644
+Out of sample CVAR0.95 (Analytical): 0.9244105552639387
+Out of sample CVAR0.95 (NN MSE): 0.3898571876250683
+Out of sample CVAR0.95 (NN CVaR 0.95): 0.27833168088817567
+Out of sample CVAR0.95 (NN CVaR 0.5): 0.5751565220437317
+Out of sample CVAR0.95 (NN MSE w PF info): 0.38468258599509547
+Out of sample CVAR0.5 (Analytical): 0.16570542339997688
+Out of sample CVAR0.5 (NN MSE): 0.16338254878118952
+Out of sample CVAR0.5 (NN CVaR 0.95): 0.19672654480792412
+Out of sample CVAR0.5 (NN CVaR 0.5): 0.1445713252951435
+Out of sample CVAR0.5 (NN MSE w PF info): 0.15704937176315323
+Avg. Turnover (Analytical) [1.31216914] ( [0.00117251] )
+Avg. Turnover (NN MSE) [1.37197654] ( [0.00179403] )
+Avg. Turnover (NN CVaR 0.95) [1.18103487] ( [0.00120644] )
+Avg. Turnover (NN CVaR 0.5) [1.33360211] ( [0.00131462] )
+Avg. Turnover (NN MSE w PF info) [1.22631782] ( [0.00091156] )
+Avg. Transaction Costs (Analytical) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN MSE) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR 0.95) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR 0.5) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN MSE w PF info) 0.0 ( 0.0 )

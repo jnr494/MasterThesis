@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 tf.config.set_visible_devices([], 'GPU')
 
 
-n = 5  # 60
+n = 60  # 60
 rate = 0.02
 rate_change = 0
 T = 3/12
@@ -42,9 +42,9 @@ S0 = 1
 
 run = "BS"
 
-exp_nr = 1
+exp_nr = 0
 train_models = True
-run_second_part = False
+run_second_part = True
 
 # Exp 3.x settings
 if exp_nr == 0:
@@ -104,7 +104,7 @@ x0, y0, banks0 = helper_functions.generate_dataset(
     s_model, n, n_samples, option_por)
 
 #Samples with b correlation
-b = 0.5
+b = 0.75
 corr05 = b * corr + (1-b) * corr0
 s_model.corr = corr05
 
@@ -120,12 +120,12 @@ s_model.corr = corr
 ############
 
 n_layers = 4
-n_units = 10
+n_units = 8
 tf.random.set_seed(69)
 
 
 # Create NN model with rm
-model1 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+model1 = StandardNNModel.NN_simple_hedge(n_assets=n_assets,
                                         n_layers=n_layers, n_units=n_units,
                                         activation='elu', final_activation=None,
                                         output2_dim=1)
@@ -136,7 +136,7 @@ model1.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
 model1.create_rm_model(alpha=alpha)
 
 # Create NN model with rm - 0 correlation
-model0 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+model0 = StandardNNModel.NN_simple_hedge(n_assets=n_assets,
                                         n_layers=n_layers, n_units=n_units,
                                         activation='elu', final_activation=None,
                                         output2_dim=1)
@@ -147,7 +147,7 @@ model0.create_model(n, rate=0, dt=T / n, transaction_costs=tc, init_pf=0,
 model0.create_rm_model(alpha=alpha)
 
 # Create NN model with rm - 0.5 correlation
-model05 = StandardNNModel.NN_simple_hedge(n_assets=n_assets, input_dim=1,
+model05 = StandardNNModel.NN_simple_hedge(n_assets=n_assets,
                                         n_layers=n_layers, n_units=n_units,
                                         activation='elu', final_activation=None,
                                         output2_dim=1)
@@ -167,7 +167,7 @@ if train_models is True:
     # train CVaR
     for x_, model, name in zip([x,x0,x05],[model1,model0, model05], 
                               [best_model_name1, best_model_name0, best_model_name05]):
-        model.train_rm_model(x_, epochs=200, batch_size=128, patience=[5, 11], lr=0.01,
+        model.train_rm_model(x_, epochs=200, batch_size=256, patience=[5, 11], lr=0.01,
                              best_model_name = name)
 
 model1.model_rm.load_weights(best_model_name1)
@@ -284,17 +284,33 @@ for i in range(1, len(model_names)):
 # Calculations
 ###########
 
+save_output = True
+folder_name = ""
+
+#Print outputs
+if save_output is True:
+    text_file = open(folder_name + "output exp 3_{}, hedge points {}, tc = {}, samples = 2_{}.txt".format(exp_nr,n,tc,N),"w")
+
+def print_overload(*args):
+    str_ = ''
+    for x in args:
+        str_ += " " + str(x)
+    str_ = str_[1:]
+    if save_output is True:
+        text_file.write(str_ + "\n")
+    print(str_)
+
 # option price and p0
-print("NN Risk p0:", model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
+print_overload("NN Risk p0:", model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
 #print("NN0 Risk p0:", model0.get_init_pf() + model0.get_J(x) * np.exp(-rate * T))
 #print("NN0 Risk p0:", model05.get_init_pf() + model05.get_J(x) * np.exp(-rate * T))
-print("Option price:", option_price)
+print_overload("Option price:", option_price)
 
 # Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
     tmp = np.mean(abs(pnl))
     tmp_std = np.std(abs(pnl))
-    print("Avg abs PnL ({}):".format(name), np.round(tmp, 5),
+    print_overload("Avg abs PnL ({}):".format(name), np.round(tmp, 5),
           '(', np.round(tmp_std / np.sqrt(N_hedge_samples), 5), ')',
           np.round(tmp / option_price * 100, 5))
 
@@ -303,7 +319,7 @@ for pnl, name in zip(Pnl, model_names):
     #print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2), 8))
     tmp = np.mean(pnl**2)
     tmp_std = np.std(pnl**2)
-    print("Avg squared PnL ({}):".format(name), np.round(tmp, 8),
+    print_overload("Avg squared PnL ({}):".format(name), np.round(tmp, 8),
           '(', np.round(tmp_std / np.sqrt(N_hedge_samples), 8), ')',
           np.round(tmp / option_price * 100, 8))
 # Avg Pbl
@@ -311,7 +327,7 @@ for pnl, name in zip(Pnl, model_names):
     #print("Avg PnL ({}):".format(name), np.round(np.mean(pnl), 8))
     tmp = np.mean(pnl)
     tmp_std = np.std(pnl)
-    print("Avg PnL ({}):".format(name), np.round(tmp, 8),
+    print_overload("Avg PnL ({}):".format(name), np.round(tmp, 8),
           '(', np.round(tmp_std / np.sqrt(N_hedge_samples), 8), ')',
           np.round(tmp / option_price * 100, 5))
     
@@ -319,22 +335,27 @@ for pnl, name in zip(Pnl, model_names):
 for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
-    print('Out of sample CVAR{} ({}):'.format(alpha, name), tmp_cvar)
+    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name), tmp_cvar, np.round(tmp_cvar/option_price,5))
 
 # Turnover
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis=0))
+    print_overload('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis=0))
 
 # Avg transaction costs
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Transaction Costs ({})'.format(
-        name), np.mean(np.sum(por.tc_hist, axis=1)))
+    tmp_avg_tc = np.mean(np.sum(por.tc_hist, axis=1))
+    print_overload('Avg. Transaction Costs ({})'.format(
+        name), tmp_avg_tc)
 
-print("Options")
-print("Type:", [o.name for o in options])
-print("Underlying:", [o.underlying for o in options])
-print("Strike:", [o.params[0] for o in options])
-print("Units:", units)
+print_overload("Options")
+print_overload("Type:", [o.name for o in options])
+print_overload("Underlying:", [o.underlying for o in options])
+print_overload("Strike:", [o.params[0] for o in options])
+print_overload("Units:", units)
+
+    
+if save_output is True:
+    text_file.close()
 
 # Run second part of experiment with changed correlation matrix
 if run_second_part is True:
@@ -360,7 +381,7 @@ if run_second_part is True:
     original_avg_sq_pnl = get_avg_sq_pnl(Pnl)
     original_oos_cvar = get_oos_cvar(Pnl)
     
-    N_runs = 500
+    N_runs = 500 #500
     N_hedge_samples = 2000
     shocks = [0,0.05,0.1,0.15]
     
@@ -433,12 +454,26 @@ if run_second_part is True:
         avg_sq_pnl_shocks_std[index,:] = np.std(tmp_avg_sq_pnl, axis = 0)
         oos_cvar_shocks_std[index,:] = np.std(tmp_oos_cvar, axis = 0)
         
-           
-        
         # reset s_model
         s_model.corr = corr
         
     oos_cvar_shocks_se = oos_cvar_shocks_std / np.sqrt(N_runs)
     
-    print("CVAR shocks:", oos_cvar_shocks)
-    print("CVAR shocks se", oos_cvar_shocks_se)
+    if save_output is True:
+        text_file = open(folder_name + "output exp 3_{}_corr, hedge points {}, tc = {}, samples = 2_{}.txt".format(exp_nr,n,tc,N),"w")
+        
+    def print_overload(*args):
+        str_ = ''
+        for x in args:
+            str_ += " " + str(x)
+        str_ = str_[1:]
+        if save_output is True:
+            text_file.write(str_ + "\n")
+        print(str_)
+    
+    print_overload("CVAR shocks:", oos_cvar_shocks)
+    print_overload("CVAR shocks se", oos_cvar_shocks_se)
+    
+        
+    if save_output is True:
+        text_file.close()

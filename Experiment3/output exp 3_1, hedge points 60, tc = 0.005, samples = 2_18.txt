@@ -1,0 +1,31 @@
+NN Risk p0: 0.5523026867557081
+Option price: 0.5096687032980844
+Avg abs PnL (Analytical): 0.04995 ( 3e-05 ) 9.80056
+Avg abs PnL (NN CVaR 0.95): 0.02105 ( 5e-05 ) 4.13097
+Avg abs PnL (NN0 CVaR 0.95): 0.02627 ( 6e-05 ) 5.15352
+Avg abs PnL (NN05 CVaR 0.95): 0.02411 ( 5e-05 ) 4.73006
+Avg squared PnL (Analytical): 0.00255373 ( 3.6e-06 ) 0.50105765
+Avg squared PnL (NN CVaR 0.95): 0.00056567 ( 2.37e-06 ) 0.11098701
+Avg squared PnL (NN0 CVaR 0.95): 0.00087612 ( 4.17e-06 ) 0.17189894
+Avg squared PnL (NN05 CVaR 0.95): 0.00071942 ( 2.86e-06 ) 0.14115415
+Avg PnL (Analytical): -0.04995036 ( 3.426e-05 ) -9.80056
+Avg PnL (NN CVaR 0.95): -0.01813215 ( 6.883e-05 ) -3.55763
+Avg PnL (NN0 CVaR 0.95): -0.02122373 ( 9.227e-05 ) -4.16422
+Avg PnL (NN05 CVaR 0.95): -0.02101561 ( 7.453e-05 ) -4.12339
+Out of sample CVAR0.95 (Analytical): 0.06848883305274059 0.13438
+Out of sample CVAR0.95 (NN CVaR 0.95): 0.042761031874606115 0.0839
+Out of sample CVAR0.95 (NN0 CVaR 0.95): 0.04922408791036649 0.09658
+Out of sample CVAR0.95 (NN05 CVaR 0.95): 0.04516715720907786 0.08862
+Avg. Turnover (Analytical) [2.65478322 0.64925982 3.37903137 3.37181751]
+Avg. Turnover (NN CVaR 0.95) [1.6410891  0.7826558  0.57182593 2.0215696 ]
+Avg. Turnover (NN0 CVaR 0.95) [1.83444816 0.64988112 0.54610929 1.83146912]
+Avg. Turnover (NN05 CVaR 0.95) [1.68981952 0.65303022 0.56428975 1.80372588]
+Avg. Transaction Costs (Analytical) 0.05003626541552419
+Avg. Transaction Costs (NN CVaR 0.95) 0.02480094019078365
+Avg. Transaction Costs (NN0 CVaR 0.95) 0.024008115666077315
+Avg. Transaction Costs (NN05 CVaR 0.95) 0.02328993862333284
+Options
+Type: ['call', 'call', 'put', 'call', 'call', 'call', 'put', 'call', 'call', 'put']
+Underlying: [3, 2, 0, 3, 3, 2, 0, 1, 3, 0]
+Strike: [1.1, 1.06, 0.98, 1.03, 1.04, 0.99, 0.78, 0.81, 0.8, 0.97]
+Units: [-0.43, -0.77, -0.9, -0.54, -0.23, -0.79, 1.78, 0.64, 1.9, 1.69]

@@ -24,7 +24,7 @@ import HedgeEngineClass
 import nearPD
 import helper_functions
 
-n = 20
+n = 60 #20
 rate = 0
 T = 1/12
 
@@ -81,23 +81,23 @@ n_units = 8
 tf.random.set_seed(69)
 
 #Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 2)
 
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = False)
+                    ignore_rates = True, ignore_minmax = True, ignore_info = False, ignore_returns=False)
 
 model.create_rm_model(alpha = alpha)
 
-model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
 model1.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = True)
+                    ignore_rates = True, ignore_minmax = True, ignore_info = True, ignore_returns=True)
 
 model1.create_rm_model(alpha = alpha)
 
@@ -215,13 +215,12 @@ if n_assets == 1:
     plt.plot(tmp_spots, tmp_model_hs,
              label = "{} hs".format(model_names[0]))
 
-   
-        
+    current_pf = np.arrau([0.0])
     current_hs = np.array([0.5])
     min_spot = np.array(0)
     for m, name in zip(models[1:-1], model_names[1:-1]):
         plt.plot(np.arange(60,180)/100*s_model.S0,
-                 [m.get_hs(time, current_hs, spot_tilde, rate, min_spot) for spot_tilde in tmp_spots_tilde], 
+                 [m.get_hs(time, current_hs, current_pf, spot_tilde, rate, min_spot) for spot_tilde in tmp_spots_tilde], 
                  '--', label = "{} hs".format(name))
     
     hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)

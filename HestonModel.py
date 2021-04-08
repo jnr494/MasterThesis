@@ -208,16 +208,15 @@ class HestonModel():
         self.bank *= np.exp(self.rate * self.dt)
         
         for _ in range(self.ddt_steps):
-            sqrt_v = np.sqrt(self.v)
             #Evovle s 
             normals1 = np.random.normal(size = (self.n,1))
             normals2 = np.random.normal(size = (self.n,1))
             
-            self.spot1 *= np.exp((self.mu - 0.5 * self.sigma **2) * self.ddt + np.sqrt(self.v * self.ddt) * normals1)
+            tmp_pos_v = np.maximum(self.v,0)
+            self.spot1 *= np.exp((self.mu - 0.5 * tmp_pos_v) * self.ddt + np.sqrt(tmp_pos_v * self.ddt) * normals1)
             
             #Evovle v
-            self.v += self.kappa * (self.theta - self.v) * self.ddt + self.sigma * sqrt_v * np.sqrt(self.ddt) * normals2                   
-            self.v = np.abs(self.v)
+            self.v += self.kappa * (self.theta - tmp_pos_v) * self.ddt + self.sigma * np.sqrt(tmp_pos_v * self.ddt) * normals2                   
             
             self.time2 += self.ddt
         
@@ -239,6 +238,9 @@ class HestonModel():
         #update min max
         self.min_spot = np.minimum(self.min_spot, self.spot)
         self.max_spot = np.maximum(self.max_spot, self.spot)
+        
+        #update spot return
+        self.spot_return = (self.spot_hist[...,-1] / (self.spot_hist[...,-2]+1e-8))
         
         return self.spot, self.bank, self.time
 
@@ -268,6 +270,9 @@ class HestonModel():
          #min max
          self.min_spot = np.array(self.spot)
          self.max_spot = np.array(self.spot)
+
+         #spot return
+         self.spot_return = np.ones_like(self.spot)
 
     def init_option(self, option_por):
         self.option_por = option_por

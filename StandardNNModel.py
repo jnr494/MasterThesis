@@ -12,6 +12,7 @@ from tensorflow.keras.layers import Dense, Lambda, Input, BatchNormalization, Ac
 from tensorflow.keras import Sequential
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import LearningRateScheduler, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from tensorflow.keras.initializers import VarianceScaling
 
 import gc
 import copy
@@ -79,16 +80,18 @@ def rm_target_loss(y_true, y_pred):
     return tf.abs(rm_loss(y_true, y_pred) - y_true[0,0])
 
 def create_input_layers(n, n_assets):
-    #spots + rates + mins_spots + Bank_T + option_payoff
-    inputs = Input(shape = (n_assets*(n+1) + n + n_assets*n + 1 + 1,))
+    #spots + rates + mins_spots + spot_returns + Bank_T + option_payoff
+    inputs = Input(shape = (n_assets*(n+1) + n + 2*n_assets*n + 1 + 1,))
     
     spots = [inputs[:,(n_assets*i):(n_assets*(1+i))] for i in range(n+1)]
     rates = [inputs[:,(n_assets * (n+1) + i):(n_assets * (n+1) + i + 1)] for i in range(n)]
     min_spots = [inputs[:,(n_assets*(n+1) + n + n_assets*i):(n_assets*(n+1) + n + n_assets*(i+1))] for i in range(n)]
+    spot_returns = [inputs[:,(n_assets*(n+1) + n + n*n_assets + n_assets*i):\
+                           (n_assets*(n+1) + n + n*n_assets + n_assets*(i+1))] for i in range(n)]
     bank_T = inputs[:,-2:-1]
     option_payoff = inputs[:,-1:]
 
-    return spots, rates, min_spots, bank_T, option_payoff, inputs
+    return spots, rates, min_spots, spot_returns, bank_T, option_payoff, inputs
 
 def calculate_tc(hs, spot):
     return tf.math.reduce_sum(tf.math.abs(hs) * spot, axis = 1, keepdims = True)
@@ -109,13 +112,13 @@ def create_submodel(input_dim, output_dim, output2_dim,
             x = inputs
         
         for _ in range(n_layers):
-            x = Dense(n_units, activation=activation)(x)
+            x = Dense(n_units, activation=activation, kernel_initializer=VarianceScaling())(x)
             if batch_norm is True:
                 x = BatchNormalization()(x)
         
         output = Dense(output_dim, activation = final_activation)(x)
         if batch_norm is True:
-            output2 = Dense(output2_dim, activation = final_activation)(x)
+            output2 = Dense(output2_dim, activation = final_activation, kernel_initializer=VarianceScaling())(x)
             submodel = Model(inputs = [inputs1, inputs2], outputs = [output,output2])
         else:
             submodel = Model(inputs = [inputs1, inputs2], outputs = output)
@@ -124,12 +127,12 @@ def create_submodel(input_dim, output_dim, output2_dim,
         return submodel
 
 class NN_simple_hedge():
-    def __init__(self, n_assets, input_dim,  
+    def __init__(self, n_assets,  
                  n_layers, n_units, 
                  activation = 'elu', final_activation = None, output2_dim =1):
         
         self.n_assets = n_assets
-        self.input_dim = input_dim  + 3 * n_assets #3 comes from spots, min_spots, hs
+        self.input_dim = 2  + 4 * n_assets #3 comes from spots, min_spots, spot_returns, hs
         self.output_dim = n_assets
         self.output2_dim = output2_dim
         
@@ -140,18 +143,13 @@ class NN_simple_hedge():
         self.activation = activation
         self.final_activation = final_activation
         
-        
-        #normalization constants
-        self.m_x = 0
-        self.s_x = 1
-
-        self.create_submodel_calls = 0
-
     def create_model(self, n, rate, dt, init_pf = None, transaction_costs = 0, 
-                     ignore_rates = False, ignore_minmax = False, ignore_info = False):
+                     ignore_rates = True, ignore_minmax = True, ignore_returns = True, ignore_info = True,
+                     ignore_pf = True):
         self.n = n
         self.T = n * dt
         self.transaction_costs = transaction_costs
+        
         
         #ignore rates handling
         if ignore_rates is True:
@@ -165,6 +163,12 @@ class NN_simple_hedge():
         else:
             self.ignore_minmax = 1
             
+        #ignore returns
+        if ignore_returns is True:
+            self.ignore_returns = 0
+        else:
+            self.ignore_returns = 1
+            
         #ignore ignore_minmiax
         if ignore_info is True:
             self.ignore_info = 0
@@ -176,6 +180,12 @@ class NN_simple_hedge():
             self.ignore_hs = 0
         else:
             self.ignore_hs = 1
+        
+        #ignore pf
+        if ignore_pf is True:
+            self.ignore_pf = 0
+        else:
+            self.ignore_pf = 1
         
         #init hs
         init_hs_comp = constmodel(self.input_dim, self.output_dim, self.output2_dim)
@@ -196,7 +206,7 @@ class NN_simple_hedge():
                                           batch_norm = False)
 
         #Inputs        
-        spots, rates, min_spots, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
+        spots, rates, min_spots, spot_returns, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
         
         #dummy variables   
         dummy_zeros = tf.zeros_like(bank_T)
@@ -225,7 +235,9 @@ class NN_simple_hedge():
         I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
                          rates[0] * self.ignore_rates, #Current rates
                          min_spots[0] * self.ignore_minmax, #Min spots information
-                         dummy_zeros_expanded * self.ignore_hs], 1) #Current hs
+                         spot_returns[0] * self.ignore_returns, #spot return information
+                         dummy_zeros_expanded * self.ignore_hs,#current hs
+                         init_pf * self.ignore_pf], 1) #current pf
         
         #init_info = dummy_zeros
         hs_0, tmp_info = self.submodel[time_idx]([I1_0, dummy_zeros_expanded2])
@@ -249,8 +261,11 @@ class NN_simple_hedge():
                 tmp_I1 = tf.concat([tf.math.log(spots[i] + 1), #Spots
                                     rates[i] * self.ignore_rates, #current rates
                                     min_spots[i] * self.ignore_minmax, #Min spots information
-                                    hs[-1] * self.ignore_hs], 1) #Current hs
-                #print(tmp_I1.shape, (tmp_info * self.ignore_info).shape)
+                                    spot_returns[i] * self.ignore_returns, #spot return information
+                                    hs[-1] * self.ignore_hs, #Current hs
+                                    pf[-1] * self.ignore_pf], 1) #Current pf
+                
+                #print(tmp_I1.shape, (spot_returns[i] * self.ignore_returns).shape)
                 tmp_hs, tmp_info = self.submodel[time_idx]([tmp_I1, tmp_info * self.ignore_info])
                 #tmp_info = self.info_model([tmp_I1, tmp_info * self.ignore_info])
 
@@ -270,7 +285,6 @@ class NN_simple_hedge():
         #Full model
         self.model_full = Model(inputs = inputs, outputs = [hs, pf, tc, init_pf])
         
-        
         #Model for training
         self.model = Model(inputs = inputs, outputs = total_pf)
         #self.model.summary()
@@ -278,115 +292,11 @@ class NN_simple_hedge():
         
         return self.model    
 
-# =============================================================================
-#     def create_model2(self, n, rate, dt, init_pf = None, transaction_costs = 0, 
-#                      ignore_rates = False):
-#         self.n = n
-#         self.T = n * dt
-#         self.transaction_costs = transaction_costs
-#         
-#         #ignore rates handling
-#         if ignore_rates is True:
-#             self.ignore_rates = 0
-#         else:
-#             self.ignore_rates = 1
-#         
-#         if abs(self.transaction_costs) < 1e-7:
-#             self.ignore_hs = 0
-#         else:
-#             self.ignore_hs = 1
-#         
-#         #init hs
-#         init_hs_comp = constmodel(self.input_dim, self.output_dim)
-#         
-#         #create submodels
-#         self.submodel = [init_hs_comp]
-#         for i in range(n -1):
-#             tmp_model = create_submodel(self.input_dim, self.output_dim,
-#                                         self.n_layers, self.n_units, 
-#                                         self.activation, self.final_activation)
-#             self.submodel.append(tmp_model) 
-# 
-#         #Inputs        
-#         spots, rates, min_spots, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
-#         
-#         #dummy variables   
-#         dummy_zeros = tf.zeros_like(bank_T)
-#         dummy_ones = tf.ones_like(bank_T)
-#         
-#         dummy_zeros_expanded = tf.zeros_like(spots[0])
-#         
-#         #Tracking variables
-#         time = 0
-#         time_idx = int(np.round(time / self.T * self.n, 6))
-# 
-#         #lists of portfolios and portfolio values
-#         hs = []
-#         #pf = []
-#         tc = []
-#         
-#         #Init pf
-#         if init_pf is None:
-#             self.init_pf_model = constmodel(1,1)
-#             init_pf = self.init_pf_model(dummy_zeros)
-#         else:
-#             init_pf = init_pf * dummy_ones
-#                 
-#         #Computations        
-#         I1_0 = tf.concat([tf.math.log(spots[0] + 1), #log("Spots" +1)
-#                          rates[0] * self.ignore_rates, #Current rates
-#                          dummy_zeros_expanded * self.ignore_hs], 1) #Current hs
-#         
-#         hs_0 = self.submodel[time_idx](I1_0)
-#         
-#         time += dt
-#         time_idx = int(np.round(time / self.T * self.n, 6))
-#         
-#         hs.append(hs_0)
-# 
-#         
-#         if n > 1:
-#             for i in range(1,n):
-#                 tmp_I1 = tf.concat([tf.math.log(spots[i] + 1), #Spots
-#                                     rates[i] * self.ignore_rates, #current rates
-#                                     hs[-1] * self.ignore_hs], 1) #Current hs
-#                 
-#                 tmp_hs = self.submodel[time_idx](tmp_I1)
-#                 
-#                 time += dt
-#                 time_idx = int(np.round(time / self.T * self.n, 6))
-#                 
-#                 hs.append(tf.identity(tmp_hs))
-#         
-#         spots_matrix = tf.stack(spots, axis = 2)
-#         hs_matrix = tf.stack(hs,axis = 2)
-#         
-#         pf = hs_matrix * (spots_matrix[..., 1:] - spots_matrix[..., :-1])
-#         tc = tf.abs(hs_matrix - tf.concat([tf.expand_dims(dummy_zeros_expanded,2), hs_matrix[...,:-1]], axis = -1)) \
-#             * spots_matrix[...,:-1] * self.transaction_costs
-#         
-#         pf_tc = tf.expand_dims(tf.reduce_sum(pf - tc, axis = [1,2]), axis = -1)
-#         
-#         total_pf = - option_payoff + bank_T * (init_pf + pf_tc)
-#         
-#         #Full model
-#         self.model_full = Model(inputs = inputs, outputs = [hs, pf, tc, init_pf])
-#         
-#         
-#         #Model for training
-#         self.model = Model(inputs = inputs, outputs = total_pf)
-#         #self.model.summary()
-#         self.compile_model()
-#         
-#         return self.model  
-#   
-# =============================================================================
-
     def create_rm_model(self, alpha = 0.95):
         #Risk measure model for training 
     
         #inputs
-        spots, rates, min_spots, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
+        spots, rates, min_spots, spot_returns, bank_T, option_payoff, inputs = create_input_layers(self.n, self.n_assets)
         
         #w = constmodel(1,1)(tf.stop_gradient(bank_T))
         w = constmodel(1,1)(tf.zeros_like(bank_T))
@@ -444,7 +354,7 @@ class NN_simple_hedge():
         self.model_rm.fit(x, y, epochs = epochs, batch_size = batch_size, verbose = 1, callbacks = callbacks, 
                           use_multiprocessing= True, workers = 8)
         
-    def get_hs(self, time, hs, spot_tilde, rate, min_spot):
+    def get_hs(self, time, hs, pf_tilde, spot_tilde, rate, min_spot, spot_return):
         time_idx = int(np.round(time / self.T * self.n, 6))
         
         #if type(time) == int or type(time) == float:
@@ -452,8 +362,8 @@ class NN_simple_hedge():
         
         log_spot = np.log(spot_tilde + 1)
         
-        new_x = np.column_stack([log_spot, rate * self.ignore_rates, min_spot * self.ignore_minmax,
-                                 hs * self.ignore_hs])
+        new_x = np.column_stack([log_spot, rate * self.ignore_rates, min_spot * self.ignore_minmax, 
+                                 spot_return * self.ignore_returns, hs * self.ignore_hs, pf_tilde * self.ignore_pf])
         
         #print(type(self.tmp_info), len(self.tmp_info), time)
         #print(type(self.tmp_info) is list, len(self.tmp_info) != len(hs), time < 1e-6)
@@ -466,13 +376,14 @@ class NN_simple_hedge():
         #print(self.tmp_info)
         return np.squeeze(tmp_hs).reshape(hs.shape)
     
-    def get_current_optimal_hs(self, model, current_hs):
-        return self.get_hs(model.time, current_hs, model.spot / model.bank[:,np.newaxis], model.rate, model.min_spot)
+    def get_current_optimal_hs(self, model, current_hs, current_pf):
         
-    
+        return self.get_hs(model.time, current_hs, current_pf / model.bank[:,np.newaxis], 
+                           model.spot / model.bank[:,np.newaxis], model.rate, 
+                           model.min_spot, model.spot_return)
     
     def get_init_pf(self):
-        return self.model_full.predict(np.zeros((1,self.n_assets * (self.n+1) + self.n + self.n * self.n_assets + 2)))[-1][0,0]
+        return self.model_full.predict(np.zeros((1,self.n_assets * (self.n+1) + self.n + 2 * self.n * self.n_assets + 2)))[-1][0,0]
 
         
 if __name__ == "__main__":

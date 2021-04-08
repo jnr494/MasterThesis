@@ -50,6 +50,9 @@ class BlackScholesModel():
         self.min_spot = np.minimum(self.min_spot, self.spot)
         self.max_spot = np.maximum(self.max_spot, self.spot)
         
+        #update spot return
+        self.spot_return = (self.spot_hist[...,-1] / (self.spot_hist[...,-2]+1e-8))
+        
         return self.spot, self.bank, self.time
 
     def reset_model(self, n = None):
@@ -68,7 +71,10 @@ class BlackScholesModel():
          #min max
          self.min_spot = np.array(self.spot)
          self.max_spot = np.array(self.spot)
-
+         
+         #spot return
+         self.spot_return = np.ones_like(self.spot)
+         
     def init_option(self, option_por):
         self.option_por = option_por
         
@@ -185,7 +191,15 @@ class BlackScholesModel():
         
     def get_current_optimal_hs(self, *args):
         return self.get_optimal_hs(self.time, self.spot_hist)
-    
+
+class BShedge():
+    def __init__(self, bs_model):
+        self.bs_model = bs_model
+            
+    def get_current_optimal_hs(self, model, current_hs, current_pf):
+        return self.bs_model.get_optimal_hs(model.time, model.spot_hist)
+
+
 if __name__ == "__main__":
     mu = np.array([0.02, 0.03, 0.01])
     sigma = np.array([0.2,0.15, 0.1])

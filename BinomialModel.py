@@ -55,6 +55,9 @@ class Binom_model():
         self.min_spot = np.minimum(self.min_spot, self.spot)
         self.max_spot = np.maximum(self.max_spot, self.spot)
         
+        #update spot return
+        self.spot_return = (self.spot_hist[...,-1] / (self.spot_hist[...,-2]+1e-8))
+        
         return self.spot, self.bank, self.time
 
     def reset_model(self, n = None):
@@ -77,6 +80,9 @@ class Binom_model():
          self.min_spot = np.array(self.spot)
          self.max_spot = np.array(self.spot)
          
+         #spot return
+         self.spot_return = np.ones_like(self.spot)         
+
     def init_option(self, option_por):
         maturity = option_por.options[0].params[1]
         self.optimal_hedge_setup(maturity)
