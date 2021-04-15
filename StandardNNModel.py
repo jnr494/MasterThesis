@@ -96,6 +96,15 @@ def create_input_layers(n, n_assets):
 def calculate_tc(hs, spot):
     return tf.math.reduce_sum(tf.math.abs(hs) * spot, axis = 1, keepdims = True)
 
+class Linear(keras.layers.Layer):
+    def __init__(self, input_dim):
+        super(Linear, self).__init__()
+        self.w = self.add_weight(shape=(input_dim,), initializer="ones", trainable=True)
+        self.b = self.add_weight(shape=(input_dim,), initializer="zeros", trainable=True)
+
+    def call(self, inputs):
+        return self.w * inputs + self.b
+
 def create_submodel(input_dim, output_dim, output2_dim,
                         n_layers, n_units, 
                         activation, final_activation = None,
@@ -116,7 +125,15 @@ def create_submodel(input_dim, output_dim, output2_dim,
             if batch_norm is True:
                 x = BatchNormalization()(x)
         
-        output = Dense(output_dim, activation = final_activation)(x)
+        output = Dense(output_dim, kernel_initializer=VarianceScaling())(x)
+        output = Activation(activation = final_activation)(x)
+        print(output.shape,output[:,0].shape)
+        outputs = []
+        for i in range(output_dim):
+            outputs.append(Dense(1,kernel_initializer=VarianceScaling())(output[:,i:(i+1)]))
+        
+        output = tf.concat(outputs, axis = -1)
+             
         if batch_norm is True:
             output2 = Dense(output2_dim, activation = final_activation, kernel_initializer=VarianceScaling())(x)
             submodel = Model(inputs = [inputs1, inputs2], outputs = [output,output2])
@@ -125,7 +142,7 @@ def create_submodel(input_dim, output_dim, output2_dim,
         submodel.summary()
         
         return submodel
-
+    
 class NN_simple_hedge():
     def __init__(self, n_assets,  
                  n_layers, n_units, 

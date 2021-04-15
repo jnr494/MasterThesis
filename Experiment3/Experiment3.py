@@ -29,10 +29,10 @@ import matplotlib.pyplot as plt
 tf.config.set_visible_devices([], 'GPU')
 
 
-n = 60  # 60
+n = 20  # 60
 rate = 0.02
 rate_change = 0
-T = 3/12
+T = 1/12
 tc = 0.0  # transaction cost
 
 alpha = 0.95  # confidence level for CVaR
@@ -120,7 +120,7 @@ s_model.corr = corr
 ############
 
 n_layers = 4
-n_units = 8
+n_units = 10
 tf.random.set_seed(69)
 
 
@@ -167,7 +167,7 @@ if train_models is True:
     # train CVaR
     for x_, model, name in zip([x,x0,x05],[model1,model0, model05], 
                               [best_model_name1, best_model_name0, best_model_name05]):
-        model.train_rm_model(x_, epochs=200, batch_size=256, patience=[5, 11], lr=0.01,
+        model.train_rm_model(x_, epochs=200, batch_size=1024, patience=[5, 11], lr=0.01,
                              best_model_name = name)
 
 model1.model_rm.load_weights(best_model_name1)
@@ -311,7 +311,7 @@ for pnl, name in zip(Pnl, model_names):
     tmp = np.mean(abs(pnl))
     tmp_std = np.std(abs(pnl))
     print_overload("Avg abs PnL ({}):".format(name), np.round(tmp, 5),
-          '(', np.round(tmp_std / np.sqrt(N_hedge_samples), 5), ')',
+          '(', np.round(tmp_std / np.sqrt(N_hedge_samples), 8), ')',
           np.round(tmp / option_price * 100, 5))
 
 # Avg squared Pnl
@@ -335,7 +335,8 @@ for pnl, name in zip(Pnl, model_names):
 for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
-    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name), tmp_cvar, np.round(tmp_cvar/option_price,5))
+    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name), tmp_cvar, 
+                   np.round(tmp_cvar/option_price * 100,5))
 
 # Turnover
 for por, name in zip(hedge_engine.ports, model_names):
@@ -440,8 +441,7 @@ if run_second_part is True:
             tmp_avg_abs_pnl[k, :] = get_avg_abs_pnl(tmp_Pnl)
             tmp_avg_sq_pnl[k, :] = get_avg_sq_pnl(tmp_Pnl)
             tmp_oos_cvar[k, :] = get_oos_cvar(tmp_Pnl)
-            
-            
+                        
             gc.collect()
         
         avg_pnl_shocks[index,:] = np.mean(tmp_avg_pnl, axis = 0)
@@ -471,8 +471,8 @@ if run_second_part is True:
             text_file.write(str_ + "\n")
         print(str_)
     
-    print_overload("CVAR shocks:", oos_cvar_shocks)
-    print_overload("CVAR shocks se", oos_cvar_shocks_se)
+    print_overload("CVAR shocks:", oos_cvar_shocks.T)
+    print_overload("CVAR shocks se", oos_cvar_shocks_se.T)
     
         
     if save_output is True:

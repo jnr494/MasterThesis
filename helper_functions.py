@@ -7,6 +7,12 @@ Created on Tue Mar 16 10:09:16 2021
 
 import numpy as np
 
+class s_model_dummy():
+    def __init__(self, spot_hist, bank_hist, rate_hist):
+        self.spot_hist = spot_hist
+        self.bank_hist = bank_hist
+        self.rate_hist = rate_hist
+
 def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     if new is True:
         s_model.reset_model(n_samples)
@@ -38,6 +44,16 @@ def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     y = np.zeros(shape = (n_samples,1))
     
     return x,y, banks
+
+def generate_dataset_from_MG(MG, bank_hist, rate_hist, option_por):
+    spot_hist = MG.generated_paths[:,np.newaxis,:]
+    s_model_dummy_ = s_model_dummy(spot_hist, bank_hist, rate_hist)
+    
+    n_samples, _, n_steps = spot_hist.shape
+    n_steps -= 1
+    
+    return generate_dataset(s_model_dummy_, n_steps, n_samples, option_por, new = False)
+    
 
 def binary_search(func,a,b, delta = 1e-6):
     a = a

@@ -1,0 +1,29 @@
+Exp nr: 0
+NN CVaR0.95 w. min.-info p0: 0.056640032678842545
+NN CVaR0.95 w. memory p0: 0.0701150894165039
+NN CVaR0.95 raw p0: 0.07137354463338852
+Option price: 0.03779806196689606
+Avg abs PnL (Analytical): 0.0061 ( 0.00592 ) 16.12692
+Avg abs PnL (NN CVaR 0.95 w. min.-info): 0.01038 ( 0.01887 ) 27.47233
+Avg abs PnL (NN CVaR 0.95 w. memory): 0.02878 ( 0.03834 ) 76.13946
+Avg abs PnL (NN CVaR 0.95 raw): 0.03069 ( 0.0398 ) 81.19751
+Avg squared PnL (Analytical): 7.22e-05
+Avg squared PnL (NN CVaR 0.95 w. min.-info): 0.00046378
+Avg squared PnL (NN CVaR 0.95 w. memory): 0.00229791
+Avg squared PnL (NN CVaR 0.95 raw): 0.00252614
+Avg PnL (Analytical): -0.00485305
+Avg PnL (NN CVaR 0.95 w. min.-info): -0.00479133
+Avg PnL (NN CVaR 0.95 w. memory): -0.00358277
+Avg PnL (NN CVaR 0.95 raw): -0.00351622
+Out of sample CVAR0.95 (Analytical): 0.023193069891692727 61.360473751287735
+Out of sample CVAR0.95 (NN CVaR 0.95 w. min.-info): 0.018872859378996024 49.93075940117002
+Out of sample CVAR0.95 (NN CVaR 0.95 w. memory): 0.03241980941874855 85.77108912923144
+Out of sample CVAR0.95 (NN CVaR 0.95 raw): 0.03367921778637136 89.10302812844736
+Avg. Turnover (Analytical) [1.82101148]
+Avg. Turnover (NN CVaR 0.95 w. min.-info) [2.12555038]
+Avg. Turnover (NN CVaR 0.95 w. memory) [2.73519592]
+Avg. Turnover (NN CVaR 0.95 raw) [2.94841935]
+Avg. Transaction Costs (Analytical) 0.0
+Avg. Transaction Costs (NN CVaR 0.95 w. min.-info) 0.0
+Avg. Transaction Costs (NN CVaR 0.95 w. memory) 0.0
+Avg. Transaction Costs (NN CVaR 0.95 raw) 0.0

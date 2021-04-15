@@ -25,10 +25,10 @@ import HedgeEngineClass
 import nearPD
 import helper_functions
 
-n = 3 #60
+n = 60 #60
 rate = 0.02
 rate_change = 0
-T = 3 #3/12
+T = 1 #3/12
 
 alpha = 0.95 #confidence level for CVaR
 alpha1 = 0.5 #confidence level for CVaR as comparrison
@@ -39,7 +39,7 @@ S0 = 1
 run = "BS"
 train_models = True
 
-exp_nr = 0 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 3 ####### Set 0 for exp 2.0 and 1 for exp 2.1
 
 #Exp 2.x settings
 if exp_nr == 0:
@@ -49,6 +49,10 @@ elif exp_nr == 1:
 elif exp_nr == 2:
     rate = 0
     tc = 0
+elif exp_nr == 3:
+    rate = 0
+    tc = 0
+    n = 3
 
 if run == "BS":
     n_assets = 1
@@ -60,6 +64,10 @@ if run == "BS":
     
     if exp_nr == 2:
         mu = np.array([0.])
+    
+    if exp_nr == 3:
+        mu = np.array([0.2])
+        sigma = np.array([0.3])
     
     corr = np.ones((n_assets,n_assets))
     for i in range(n_assets):
@@ -94,7 +102,7 @@ x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_po
 ############
 
 n_layers = 4 #4
-n_units = 3 #5
+n_units = 5 #5
 tf.random.set_seed(69)
 
 #Create NN model with MSE
@@ -112,7 +120,7 @@ model_mse2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets,
                                         output2_dim = 1)
 
 model_mse2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, 
-                        ignore_pf = True, ignore_info = False) 
+                        ignore_pf = False, ignore_info = True) 
 
 
 #Create NN model with rm
@@ -121,7 +129,7 @@ model = StandardNNModel.NN_simple_hedge(n_assets = n_assets,
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
-model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
+model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price) #0!!!!!!!!!!
 
 model.create_rm_model(alpha = alpha)
 
@@ -131,9 +139,10 @@ model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets,
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
-model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
+model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = option_price, #0!!!!!!!!!!!!!
+                    ignore_pf = False)
 
-model2.create_rm_model(alpha = alpha1)  
+model2.create_rm_model(alpha = alpha) #alpha1  
 
 #Training models
 
@@ -146,7 +155,7 @@ if train_models is True:
     #train mse model  
     model_mse.train_model(x, y, batch_size = 1024, epochs = 100, patience = [5,11], learning_rate = 0.01, best_model_name = best_model_name1)
     
-    if not exp_nr == 2:
+    if not exp_nr == 2: 
         #train mse model2 
         model_mse2.train_model(x, y, batch_size = 1024, epochs = 100, patience = [5,11], learning_rate = 0.01, best_model_name = best_model_name12)
         

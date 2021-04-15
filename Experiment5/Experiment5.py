@@ -28,7 +28,7 @@ import helper_functions
 n = 20 #60
 rate = 0 ###!!!!!!!!!!!!!
 rate_change = 0
-T = 3/12
+T = 1/12
 
 alpha = 0.95 #confidence level for CVaR
 
@@ -37,7 +37,7 @@ S0 = 1
 
 run = "BS"
 
-exp_nr = 99 #######
+exp_nr = 0 #######
 
 #Exp 5.x settings
 tc = 0
@@ -91,7 +91,7 @@ tf.random.set_seed(69)
 
 
 #Create NN model with rm with minmax knowledge
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
@@ -102,7 +102,7 @@ model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0,
 model.create_rm_model(alpha = alpha)
 
 #Create NN model with rm without minmax knowledge
-model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 2)
@@ -112,7 +112,7 @@ model1.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0
 
 model1.create_rm_model(alpha = alpha)
 
-model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, input_dim = 1, 
+model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
@@ -217,7 +217,7 @@ if n_assets == 1:
         plt.close()
     
 #Plot hs from nn vs optimal
-for i in range(2):
+for i in range(5):
     for j in range(n_assets):
         times = np.arange(n)/n
         for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--","--"]):
@@ -241,12 +241,13 @@ if n_assets == 1:
              label = "{} hs".format(model_names[0]))
 
    
-        
+    current_pf = np.array([0.0])
     current_hs = np.array([0.5])
     min_spot = np.array(0)
+    spot_return = np.array(0)
     for m, name in zip(models[1:], model_names[1:]):
         plt.plot(np.arange(60,180)/100*s_model.S0,
-                 [m.get_hs(time, current_hs, spot_tilde, rate, min_spot) for spot_tilde in tmp_spots_tilde], 
+                 [m.get_hs(time, current_hs, current_pf, spot_tilde, rate, min_spot, spot_return) for spot_tilde in tmp_spots_tilde], 
                  '--', label = "{} hs".format(name))
     
     hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)
@@ -273,38 +274,56 @@ for i in range(1,len(model_names)):
 #Calculations
 ###########
 
+save_output = True
+folder_name = ""
+
+#Print outputs
+if save_output is True:
+    text_file = open(folder_name + "output exp 5_{}, hedge points {}, tc = {}, samples = 2_{}.txt".format(exp_nr,n,tc,N),"w")
+
+def print_overload(*args):
+    str_ = ''
+    for x in args:
+        str_ += " " + str(x)
+    str_ = str_[1:]
+    if save_output is True:
+        text_file.write(str_ + "\n")
+    print(str_)
+
 #option price and p0
-print("Exp nr:",exp_nr)
-print("NN CVaR{} w. min.-info p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
-print("NN CVaR{} w. memory p0:".format(alpha), model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
-print("NN CVaR{} raw p0:".format(alpha), model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T))
-print("Option price:", option_price)
+print_overload("Exp nr:",exp_nr)
+print_overload("NN CVaR{} w. min.-info p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
+print_overload("NN CVaR{} w. memory p0:".format(alpha), model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
+print_overload("NN CVaR{} raw p0:".format(alpha), model2.get_init_pf() + model2.get_J(x) * np.exp(-rate * T))
+print_overload("Option price:", option_price)
 
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
+    print_overload("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
       '(',np.round(np.std(abs(pnl)),5),')',
-      np.round(np.mean(abs(pnl))  / init_pf,5))
+      np.round(np.mean(abs(pnl))  / option_price * 100,5))
 
 #Avg squared Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8))
+    print_overload("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8))
 
-#Avg Pbl
+#Avg Pnl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8))
+    print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8))
 
 #Calculate CVAR high
 for pnl, name in zip(Pnl, model_names):
     tmp_loss = - pnl
     tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
-    print('Out of sample CVAR{} ({}):'.format(alpha, name),tmp_cvar)
+    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name),tmp_cvar, tmp_cvar / option_price * 100)
     
-
 #Turnover
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
+    print_overload('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
     
 #Avg transaction costs
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Transaction Costs ({})'.format(name), np.mean(np.sum(por.tc_hist, axis = 1)))
+    print_overload('Avg. Transaction Costs ({})'.format(name), np.mean(np.sum(por.tc_hist, axis = 1)))
+    
+if save_output is True:
+    text_file.close()

@@ -1,0 +1,27 @@
+Exp nr: 2
+hedge points 3, tc = 0, samples = 2**18
+Option price: 0.20498785376548767
+NN MSE p0: 0.20498785 100.0
+NN CVaR0.95 p0: 0.3589250147342682 175.09574745091447
+NN CVaR0.5 p0: 3.4692959785461426 1692.439778658848
+Avg abs PnL (Analytical): 0.09786 ( 0.00028936 ) 47.74009
+Avg abs PnL (NN MSE): 0.06959 ( 0.00017175 ) 33.95032
+Avg abs PnL (NN CVaR 0.95): 0.08914 ( 0.00015859 ) 43.48454
+Avg squared PnL (Analytical): 0.01794988 ( 0.00013484 )
+Avg squared PnL (NN MSE): 0.00779314 ( 4.229e-05 )
+Avg squared PnL (NN CVaR 0.95): 0.01046061 ( 3.681e-05 )
+Avg PnL (Analytical): -0.04478163 ( 0.00039931 ) -21.84599
+Avg PnL (NN MSE): 0.02876127 ( 0.00026393 ) 14.03072
+Avg PnL (NN CVaR 0.95): 0.06579248 ( 0.00024763 ) 32.09579
+Out of sample CVAR0.95 (Analytical): 0.37749058815278247
+Out of sample CVAR0.95 (NN MSE): 0.1850197303869495
+Out of sample CVAR0.95 (NN CVaR 0.95): 0.15225316968982305
+Out of sample CVAR0.5 (Analytical): 0.1391470822504684
+Out of sample CVAR0.5 (NN MSE): 0.03391307035310177
+Out of sample CVAR0.5 (NN CVaR 0.95): -0.009212513126973087
+Avg. Turnover (Analytical) [0.97528001] ( [0.00045343] )
+Avg. Turnover (NN MSE) [0.98046775] ( [0.00029381] )
+Avg. Turnover (NN CVaR 0.95) [0.99983079] ( [0.00029951] )
+Avg. Transaction Costs (Analytical) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN MSE) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR 0.95) 0.0 ( 0.0 )
