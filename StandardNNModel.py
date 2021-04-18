@@ -121,9 +121,11 @@ def create_submodel(input_dim, output_dim, output2_dim,
             x = inputs
         
         for _ in range(n_layers):
-            x = Dense(n_units, activation=activation, kernel_initializer=VarianceScaling())(x)
+            x = Dense(n_units, kernel_initializer=VarianceScaling())(x)
             if batch_norm is True:
                 x = BatchNormalization()(x)
+            x = Activation(activation = activation)(x)
+        
         
         output = Dense(output_dim, kernel_initializer=VarianceScaling())(x)
         output = Activation(activation = final_activation)(x)

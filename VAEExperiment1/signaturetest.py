@@ -291,3 +291,114 @@ new_logsig = iisignature.logsig(new_ll_path, prep)
 print(logsig)
 print(new_logsig)
 print((logsig - new_logsig)/logsig)
+
+#############  This almost works
+model = BlackScholesModel.BlackScholesModel(1,0.05, 0.3, np.array([[1]]), 0.01, dt = 0.01)
+
+n = 20
+for _ in range(n):
+    model.evolve_s_b()
+    
+path = np.squeeze(model.spot_hist)[np.newaxis,:]
+
+order = 4
+m = iisignature.logsiglength(2, order)
+prep = iisignature.prepare(2, order)
+t0 = time.time()
+logsig = iisignature.logsig(leadlag(path[0]),prep)
+
+
+new_path = np.ones(n+1)
+new_logsig = iisignature.logsig(leadlag(new_path),prep)
+loss = error(logsig,new_logsig)
+step = 0.01
+
+counts = []
+max_step = 0.01
+
+for k in range(100000):
+    if k % 10000 == 0:
+        if max_step < 5e-4:
+            break
+        else:
+            print("Max step",k, max_step)
+            steps = [0.01/10**i for i in range(3)]
+            max_step = 0
+        
+    for step in steps:
+        tmp_normal = np.random.normal(size = n+1) * step
+        tmp_normal[0] = 0
+        
+        #tmp_normal = np.zeros((n+1))
+        #tmp_normal[np.random.randint(20,size = 100)+1] += np.random.normal()*step
+        
+        tmp_logsig = iisignature.logsig(leadlag(new_path + tmp_normal),prep)
+        tmp_loss = error(logsig,tmp_logsig)
+        
+        if tmp_loss < loss:
+            print(k,"+", loss)
+            new_path = new_path + tmp_normal
+            new_logsig = iisignature.logsig(leadlag(new_path),prep)
+            loss = error(logsig,new_logsig)
+            counts.append([k,step])
+            if step > max_step:
+                max_step = step
+        
+
+plt.plot(path[0])
+plt.plot(new_path)
+plt.show()
+
+print(logsig)
+print(new_logsig)
+print((abs(logsig - new_logsig))/abs(logsig))
+
+counts = np.array(counts)
+
+#2nd try
+model = BlackScholesModel.BlackScholesModel(1,0.05, 0.3, np.array([[1]]), 0.01, dt = 0.01)
+
+n = 20
+for _ in range(n):
+    model.evolve_s_b()
+    
+path = np.squeeze(model.spot_hist)[np.newaxis,:]
+
+order = 4
+m = iisignature.logsiglength(2, order)
+prep = iisignature.prepare(2, order)
+t0 = time.time()
+logsig = iisignature.logsig(leadlag(path[0]),prep)
+
+
+new_path = np.linspace(path[0][0],path[0][-1],n+1)
+best_path = new_path
+best_logsig = iisignature.logsig(leadlag(best_path),prep)
+loss = error(logsig,best_logsig)
+
+sigma = 0.05
+
+for k in range(100000):
+        rand_perm = np.random.permutation(n-1)+1
+        tmp_path = np.array(new_path)
+        tmp_path[1:-1] = np.random.permutation(new_path[1:-1])
+        #tmp_normal = np.zeros((n+1))
+        #tmp_normal[np.random.randint(20,size = 100)+1] += np.random.normal()*step
+        
+        tmp_logsig = iisignature.logsig(leadlag(tmp_path),prep)
+        tmp_loss = error(logsig,tmp_logsig)
+        
+        if tmp_loss < loss:
+            print(k, tmp_loss)
+            best_path = tmp_path
+            loss = tmp_loss
+        
+
+plt.plot(path[0])
+plt.plot(best_path)
+plt.show()
+
+print(logsig)
+print(new_logsig)
+print((abs(logsig - new_logsig))/abs(logsig))
+

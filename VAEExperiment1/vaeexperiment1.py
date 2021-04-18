@@ -67,10 +67,10 @@ bank_hist, rate_hist = (s_model.bank_hist, s_model.rate_hist)
 
 #Create function to create MG and MG-samples
 
-def create_MG(N, plot = True):
+def create_MG(N, alpha = 0.2, beta = 0, seed = None, plot = True):
     MG = MarketGenerator.MarketGenerator(s_model, n)
-    MG.create_vae(latent_dim = n, layers_units=[2*n])
-    MG.create_training_path(N, overlap = True)
+    MG.create_vae(latent_dim = n, layers_units=[2*n], alpha = alpha, beta = beta)
+    MG.create_training_path(N, overlap = True, seed = seed)
     MG.train_vae()
     
     if plot is True:
@@ -97,30 +97,43 @@ tf.random.set_seed(69)
 #Create NN model with rm
 model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
-                                        activation = 'elu', final_activation = "sigmoid", 
+                                        activation = 'elu', final_activation = None, 
                                         output2_dim = 1)
 
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
 
 model.create_rm_model(alpha = alpha)
 
+model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
+                                        n_layers = n_layers, n_units = n_units, 
+                                        activation = 'elu', final_activation = "tanh", 
+                                        output2_dim = 1)
+
+model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
+
+model2.create_rm_model(alpha = alpha)
+
 #Create NN models for MG data
-N_MG_samples = int(n*(1/T)*1 - n + 1) # 2 years of data with n samples in T time.
-n_MG_models = 2
+train_path_seed = None
+N_MG_samples = int(n*(1/T)*10 - n + 1) # 5 years of data with n samples in T time.
+n_MG_models = 10
+beta = 10
 MGs = []
 MG_models = []
 best_model_name_MGs = []
 MG_model_names = ["NN CVaR MG{}".format(i) for i in range(n_MG_models)]
 MG_train_losses = []
 
+final_activations = ["tanh"] * n_MG_models
+
 for i in range(n_MG_models):
     # create MG
-    MGs.append(create_MG(N_MG_samples))
+    MGs.append(create_MG(N_MG_samples, beta = beta, seed = train_path_seed))
     
     #create MG model
     tmp_model_MG = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                             n_layers = n_layers, n_units = n_units, 
-                                            activation = 'elu', final_activation = "sigmoid", 
+                                            activation = 'elu', final_activation = final_activations[i], 
                                             output2_dim = 1)
     tmp_model_MG.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
     tmp_model_MG.create_rm_model(alpha = alpha)
@@ -130,14 +143,15 @@ for i in range(n_MG_models):
     
 #Training models
 best_model_name = "best_model_rm_normal_{}.hdf5".format(exp_nr)
+best_model_name2 = "best_model2_rm_normal_{}.hdf5".format(exp_nr)
 
 
 if train_models is True:
 
     #train CVaR model   
     model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name)
-
-    
+    model2.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
+   
     #train MG CVaR model
     for MG, MG_model, name in zip(MGs, MG_models, best_model_name_MGs):
         tmp_x_MG, _ = generate_MG_data(MG, n_samples)
@@ -145,6 +159,7 @@ if train_models is True:
         
 
 model.model_rm.load_weights(best_model_name)
+model2.model_rm.load_weights(best_model_name2)
 for model_MG, name in zip(MG_models,best_model_name_MGs):
     model_MG.model_rm.load_weights(name)  
 
@@ -173,9 +188,8 @@ init_pf = option_price
 N_hedge_samples = 100000
 
 #create portfolios
-models = [s_model, model] + MG_models
-model_names = ["Analytical", "NN CVaR Ordinary"] + MG_model_names
-
+models = [s_model, model, model2] + MG_models
+model_names = ["Analytical", "NN CVaR Ordinary", "NN CVAr Ordinary2"] + MG_model_names
 
 #models = [s_model]
 #model_names = [run]

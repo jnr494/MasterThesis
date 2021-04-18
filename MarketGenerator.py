@@ -18,16 +18,16 @@ class MarketGenerator():
         self.n = n
         self.train_history = []
         
-    def create_vae(self, latent_dim = 10, layers_units = [20,10], alpha = 0.2):
+    def create_vae(self, latent_dim = 10, layers_units = [20,10], alpha = 0.2, beta = 0):
         self.encoder = VAE.create_encoder(self.n, layers_units, latent_dim = latent_dim)
         self.decoder = VAE.create_decoder(self.n, latent_dim = latent_dim, layers_units = layers_units[::-1], final_activation = None)
-        self.vae = VAE.VAE(self.encoder, self.decoder, alpha = alpha)
+        self.vae = VAE.VAE(self.encoder, self.decoder, alpha = alpha, beta = beta)
         
         #compile model
         VAE.compile_vae(self.vae)
     
-    def create_training_path(self, N, overlap = False):
-        self.log_returns = MarketGeneratorHelpFunctions.generate_data_for_MG(self.s_model, self.n, N, overlap = overlap)
+    def create_training_path(self, N, overlap = False, seed = None):
+        self.log_returns = MarketGeneratorHelpFunctions.generate_data_for_MG(self.s_model, self.n, N, overlap = overlap, seed = seed)
         self.log_returns_norm, self.scaler = MarketGeneratorHelpFunctions.transform_data(self.log_returns, minmax = False)
         self.training_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, self.log_returns)
 
@@ -39,8 +39,8 @@ class MarketGenerator():
                                     best_model_name=best_model_name)
             self.train_history.append(tmp_history)
     
-    def generate_paths(self, n_samples, save = True):
-        sample_vae = MarketGeneratorHelpFunctions.sample_from_vae(self.decoder, n_samples)
+    def generate_paths(self, n_samples, seed = None, save = True):
+        sample_vae = MarketGeneratorHelpFunctions.sample_from_vae(self.decoder, n_samples, seed = seed)
         log_return_vae = self.scaler.inverse_transform(sample_vae)
         
         generated_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, log_return_vae)
