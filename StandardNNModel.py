@@ -128,13 +128,15 @@ def create_submodel(input_dim, output_dim, output2_dim,
         
         
         output = Dense(output_dim, kernel_initializer=VarianceScaling())(x)
-        output = Activation(activation = final_activation)(x)
-        print(output.shape,output[:,0].shape)
-        outputs = []
-        for i in range(output_dim):
-            outputs.append(Dense(1,kernel_initializer=VarianceScaling())(output[:,i:(i+1)]))
         
-        output = tf.concat(outputs, axis = -1)
+        if not final_activation == None: 
+            output = Activation(activation = final_activation)(x)
+            print(output.shape,output[:,0].shape)
+            outputs = []
+            for i in range(output_dim):
+                outputs.append(Dense(1,kernel_initializer=VarianceScaling())(output[:,i:(i+1)]))
+            
+            output = tf.concat(outputs, axis = -1)
              
         if batch_norm is True:
             output2 = Dense(output2_dim, activation = final_activation, kernel_initializer=VarianceScaling())(x)

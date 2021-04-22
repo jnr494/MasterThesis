@@ -13,7 +13,10 @@ import iisignature
 import BlackScholesModel
 
 
-def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None):
+def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None, cheat = False):
+    if cheat is True:
+        return generate_data_for_MG_cheat(model, n, N, plot, overlap, seed)
+    
     print(overlap)
     np.random.seed(seed)
     model.reset_model(1)
@@ -28,7 +31,8 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None)
     plt.plot(spots)
     plt.show()
         
-    log_returns = np.log(spots[1:] / spots[:-1])
+    #log_returns = np.log(spots[1:] / spots[:-1])
+    log_returns = spots[1:] / spots[:-1] - 1
     
     if overlap is True:
         log_returns_data = np.zeros((N,n))
@@ -38,6 +42,21 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None)
         log_returns_data = log_returns.reshape((N,n))
     
     return log_returns_data
+
+def generate_data_for_MG_cheat(model, n, N, plot = True, overlap = False, seed = None):
+    print(overlap)
+    np.random.seed(seed)
+    model.reset_model(N)
+    for _ in range(n):
+        model.evolve_s_b()
+        
+    spots = model.spot_hist[:,0,:]
+    plt.plot(spots[:100,:].T)
+    plt.show()
+        
+    returns = spots[:,1:] / spots[:,:-1] - 1
+        
+    return returns
 
 def transform_data(data, minmax = True):
     if minmax is True:
@@ -59,7 +78,8 @@ def sample_from_vae(decoder, n_samples, s0 = 1, seed = None, std = 1):
     return latent_sample_decoded
     
 def convert_log_returns_to_paths(s0, log_returns):
-    returns = np.exp(log_returns)
+    #returns = np.exp(log_returns)
+    returns = log_returns + 1
     cum_returns = np.cumprod(returns, axis = 1)    
     
     paths = s0 * cum_returns

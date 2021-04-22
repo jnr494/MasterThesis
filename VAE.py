@@ -100,7 +100,10 @@ class VAE(keras.Model):
         )
         self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
         self.std_loss_tracker = keras.metrics.Mean(name="std_loss")
-        self.cov_loss_tracker = keras.metrics.Mean(name="std_loss")
+        self.cov_loss_tracker = keras.metrics.Mean(name="cov_loss")
+        self.mean_loss_tracker = keras.metrics.Mean(name="mean_loss")
+        
+        self.decoder_output_dim = self.decoder.output_shape[1]
         
     @property
     def metrics(self):
@@ -110,6 +113,7 @@ class VAE(keras.Model):
             self.kl_loss_tracker,
             self.std_loss_tracker,
             self.cov_loss_tracker,
+            self.mean_loss_tracker
         ]
 
     def train_step(self, data):
@@ -122,20 +126,29 @@ class VAE(keras.Model):
             reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.math.squared_difference(data_y, reconstruction), 1))
             #kl
             kl_loss = tf.reduce_mean(-0.5 * tf.reduce_sum(1. + z_log_var - tf.square(z_mean) - tf.exp(z_log_var), 1))
-            #std
             
-            reconstruction2 = self.sample_normals_like(z_mean)
-            tmp_reconstruction = reconstruction
-            std_diff = tf.math.reduce_std(data_y,0) - tf.math.reduce_std(tmp_reconstruction,0)
+            #std and mean loss
+            reconstruction2 = self.decoder(self.sample_normals_like(z_mean))
+            tmp_reconstruction = reconstruction2
+            
+            std_diff = tf.math.reduce_std(tmp_reconstruction,0) - tf.math.reduce_std(data_y,0)
             std_loss = tf.reduce_mean(tf.math.abs(std_diff))
-
+            
+            mean_diff = tf.math.reduce_mean(tmp_reconstruction,0) - tf.math.reduce_mean(data_y,0)
+            mean_loss = tf.reduce_mean(tf.math.abs(mean_diff))
+         
             #covariance
-            lag = 1
-            cov_loss = calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag)
+            lags = self.decoder_output_dim - 1
+            cov_loss = 0
+            for lag in range(1,lags+1): 
+                cov_loss += (calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag) + \
+                            calculate_cov_loss(data_y, tmp_reconstruction, lag)) / lag
             
             print(reconstruction_loss.shape, kl_loss.shape, std_loss.shape)
             #total loss
-            total_loss = (1 - self.alpha) * reconstruction_loss + self.alpha * kl_loss + self.beta * (std_loss + cov_loss)
+            total_loss = (1 - self.alpha) * reconstruction_loss + self.alpha * kl_loss
+            total_loss += self.beta * (mean_loss + std_loss + cov_loss)
+            #total_loss = mean_loss + std_loss + cov_loss
             print("Total loss shape",total_loss.shape)
             
         grads = tape.gradient(total_loss, self.trainable_weights)
@@ -145,12 +158,14 @@ class VAE(keras.Model):
         self.kl_loss_tracker.update_state(kl_loss)
         self.std_loss_tracker.update_state(std_loss)
         self.cov_loss_tracker.update_state(cov_loss)
+        self.mean_loss_tracker.update_state(mean_loss)
         return {
             "loss": self.total_loss_tracker.result(),
             "reconstruction_loss": self.reconstruction_loss_tracker.result(),
             "kl_loss": self.kl_loss_tracker.result(),
             "std_loss": self.std_loss_tracker.result(),
-            "cov_loss": self.cov_loss_tracker.result()
+            "cov_loss": self.cov_loss_tracker.result(),
+            "mean_loss": self.mean_loss_tracker.result()
         }
 
 def compile_vae(vae):
@@ -187,7 +202,7 @@ def plot_label_clusters(encoder, data, labels):
 
 if __name__ == '__main__':
     n = 20
-    N = 1000
+    N = 100
     T = 1/12
     s0, mu, sigma, rate, dt = (1, 0.06, 0.2, 0.01, T/n)
     bs_model = BlackScholesModel.BlackScholesModel(s0,mu, sigma, np.ones((1,1)), rate, dt)
@@ -238,67 +253,59 @@ if __name__ == '__main__':
     
     plt.plot(sampled_paths[:100,:].T)
     plt.show() 
+    
 
-    #### Moment comparrison
-    paths = [actual_paths, sampled_paths]
-    print("Mean",[np.mean(p[:,-1]) for p in paths])
-    print("Std", [np.std(p[:,-1]) for p in paths])
-
-    plot_label_clusters(encoder, data_x, actual_paths[:,-1])
-    plot_label_clusters(encoder, data_x, actual_paths[:,-1])
-    
-    
-    #QQ plot
-    
-    percentiles = np.linspace(0.01,0.99,100)
-    i = n
-    actual_quantiles = np.quantile(actual_paths[:,i], percentiles)
-    sampled_quantiles = np.quantile(sampled_paths[:,i], percentiles)
-    
-    #qq plot with theoretical quantiles of simulated bs paths    
-    plt.scatter(actual_quantiles, sampled_quantiles, s = 5)
-    plt.plot(actual_quantiles[[0,-1]],actual_quantiles[[0,-1]],c='k')
-    plt.show()
-    
-    #more precise actual quantiles
-    percentiles2 = np.linspace(0.001,0.999,999)
-    sampled_quantiles2 = np.quantile(sampled_paths[:,i], percentiles2)
-    
 # =============================================================================
-#     log_returns2 = MarketGeneratorHelpFunctions.generate_data_for_MG(bs_model, n, 1000)
-#     actual_paths2 = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(s0, log_returns2)
+#     #### Moment comparrison
+#     paths = [actual_paths, sampled_paths]
+#     print("Mean",[np.mean(p[:,-1]) for p in paths])
+#     print("Std", [np.std(p[:,-1]) for p in paths])
+# 
+#     plot_label_clusters(encoder, data_x, actual_paths[:,-1])
+#     plot_label_clusters(encoder, data_x, actual_paths[:,-1])
 #     
-#     actual_quantiles2 = np.quantile(actual_paths2[:,i], percentiles2)
-#     sampled_quantiles2 = np.quantile(sampled_paths[:,i], percentiles2)
 #     
-#     plt.scatter(actual_quantiles2, sampled_quantiles2, s = 5)
-#     plt.plot(actual_quantiles2[[0,-1]],actual_quantiles2[[0,-1]],c='k')
+#     #QQ plot
+#     
+#     percentiles = np.linspace(0.01,0.99,100)
+#     i = n
+#     actual_quantiles = np.quantile(actual_paths[:,i], percentiles)
+#     sampled_quantiles = np.quantile(sampled_paths[:,i], percentiles)
+#     
+#     #qq plot with theoretical quantiles of simulated bs paths    
+#     plt.scatter(actual_quantiles, sampled_quantiles, s = 5)
+#     plt.plot(actual_quantiles[[0,-1]],actual_quantiles[[0,-1]],c='k')
 #     plt.show()
+#     
+#     #more precise actual quantiles
+#     percentiles2 = np.linspace(0.001,0.999,999)
+#     sampled_quantiles2 = np.quantile(sampled_paths[:,i], percentiles2)
+#        
+#     #test
+#     s = sigma * np.sqrt(T)
+#     loc = (mu - sigma**2/2)*T
+#     scale = 1/s0
+#     real_quantiles2 = lognorm.ppf(percentiles2, s = s, loc = loc, scale = scale)
+#         
+#     plt.scatter(real_quantiles2, sampled_quantiles2, s = 5)
+#     plt.plot(real_quantiles2[[0,-1]],real_quantiles2[[0,-1]],c='k')
+#     plt.show()
+#     
+#     #test of simulated paths
+#     real_quantiles = lognorm.ppf(percentiles, s = s, loc = loc, scale = scale)
+#     plt.scatter(real_quantiles, actual_quantiles, s = 5)
+#     plt.plot(real_quantiles[[0,-1]],real_quantiles[[0,-1]],c='k')
+#     plt.show()
+#     
+# ###################### Look at std and covariance
+#     i = -1
+#     print("Log returns")
+#     print("Std:",np.std(log_returns[:,i]),np.std(log_return_vae[:,i]))
+#     print("Cov:",np.cov(log_returns[:,i-1],log_returns[:,i])[0,1],
+#           np.cov(log_return_vae[:,i-1],log_return_vae[:,i])[0,1])
+#     print("Abs Cov:",np.cov(np.abs(actual_paths[:,i-1]),np.abs(actual_paths[:,i]))[0,1],
+#           np.cov(np.abs(sampled_paths[:,i-1]),np.abs(sampled_paths[:,i]))[0,1])
+#     
+#     a = calculate_cov_lag(log_returns,1).numpy()
+# 
 # =============================================================================
-    
-    #test
-    s = sigma * np.sqrt(T)
-    loc = (mu - sigma**2/2)*T
-    scale = 1/s0
-    real_quantiles2 = lognorm.ppf(percentiles2, s = s, loc = loc, scale = scale)
-        
-    plt.scatter(real_quantiles2, sampled_quantiles2, s = 5)
-    plt.plot(real_quantiles2[[0,-1]],real_quantiles2[[0,-1]],c='k')
-    plt.show()
-    
-    #test of simulated paths
-    real_quantiles = lognorm.ppf(percentiles, s = s, loc = loc, scale = scale)
-    plt.scatter(real_quantiles, actual_quantiles, s = 5)
-    plt.plot(real_quantiles[[0,-1]],real_quantiles[[0,-1]],c='k')
-    plt.show()
-    
-###################### Look at std and covariance
-    i = -1
-    print("Log returns")
-    print("Std:",np.std(log_returns[:,i]),np.std(log_return_vae[:,i]))
-    print("Cov:",np.cov(log_returns[:,i-1],log_returns[:,i])[0,1],
-          np.cov(log_return_vae[:,i-1],log_return_vae[:,i])[0,1])
-    print("Abs Cov:",np.cov(np.abs(actual_paths[:,i-1]),np.abs(actual_paths[:,i]))[0,1],
-          np.cov(np.abs(sampled_paths[:,i-1]),np.abs(sampled_paths[:,i]))[0,1])
-    
-    a = calculate_cov_lag(log_returns,1).numpy()

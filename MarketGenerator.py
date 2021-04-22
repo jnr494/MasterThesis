@@ -26,8 +26,9 @@ class MarketGenerator():
         #compile model
         VAE.compile_vae(self.vae)
     
-    def create_training_path(self, N, overlap = False, seed = None):
-        self.log_returns = MarketGeneratorHelpFunctions.generate_data_for_MG(self.s_model, self.n, N, overlap = overlap, seed = seed)
+    def create_training_path(self, N, overlap = False, seed = None, cheat = False):
+        self.log_returns = MarketGeneratorHelpFunctions.generate_data_for_MG(self.s_model, self.n, N, overlap = overlap, 
+                                                                             seed = seed, cheat = cheat)
         self.log_returns_norm, self.scaler = MarketGeneratorHelpFunctions.transform_data(self.log_returns, minmax = False)
         self.training_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, self.log_returns)
 
@@ -39,9 +40,12 @@ class MarketGenerator():
                                     best_model_name=best_model_name)
             self.train_history.append(tmp_history)
     
-    def generate_paths(self, n_samples, seed = None, save = True):
+    def generate_paths(self, n_samples, seed = None, save = True, return_returns = False):
         sample_vae = MarketGeneratorHelpFunctions.sample_from_vae(self.decoder, n_samples, seed = seed)
-        log_return_vae = self.scaler.inverse_transform(sample_vae)
+        log_return_vae = self.scaler.inverse_transform(sample_vae)       
+        
+        if return_returns is True:
+            return log_return_vae
         
         generated_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, log_return_vae)
         
@@ -49,6 +53,21 @@ class MarketGenerator():
             self.generated_paths = generated_paths
         
         return generated_paths
+    
+    def generate_longer_paths(self, n_samples, length, seed = None, save = True):
+        n_segments = int(np.ceil(length / self.n))
+        
+        seeds = [None] * n_segments if seed is None else seed + np.arange(n_segments)
+        returns = [self.generate_paths(n_samples, seed = seed, return_returns = True) for seed in seeds]
+        returns = np.hstack(returns)
+        returns = returns[:,:length]
+        
+        generated_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, returns)
+        
+        if save is True:
+            self.generated_paths = generated_paths
+        return generated_paths
+        
     
     def qq_plot_fit(self):
         N = len(self.training_paths)
@@ -65,7 +84,10 @@ class MarketGenerator():
         plt.plot(actual_quantiles[[0,-1]],actual_quantiles[[0,-1]],c='k')
         plt.show()
         
-    def plot_generated_paths(self, n_samples):
-        paths = self.generate_paths(100, False)
+    def plot_generated_paths(self, n_samples, length = None):
+        if length is None:
+            paths = self.generate_paths(100, save = False)
+        else:
+            paths = self.generate_longer_paths(n_samples, length, save = False)
         plt.plot(paths.T)
         plt.show()

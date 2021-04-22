@@ -58,7 +58,7 @@ option_por = OptionClass.OptionPortfolio(options,units)
 option_price = s_model.init_option(option_por)
 
 #Create sample paths 
-N = 15
+N = 18
 n_samples = 2**N
 
 np.random.seed(69)
@@ -69,7 +69,7 @@ bank_hist, rate_hist = (s_model.bank_hist, s_model.rate_hist)
 
 def create_MG(N, alpha = 0.2, beta = 0, seed = None, plot = True):
     MG = MarketGenerator.MarketGenerator(s_model, n)
-    MG.create_vae(latent_dim = n, layers_units=[2*n], alpha = alpha, beta = beta)
+    MG.create_vae(latent_dim = n, layers_units=[3*n], alpha = alpha, beta = beta)
     MG.create_training_path(N, overlap = True, seed = seed)
     MG.train_vae()
     
@@ -106,7 +106,7 @@ model.create_rm_model(alpha = alpha)
 
 model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
-                                        activation = 'elu', final_activation = "tanh", 
+                                        activation = 'elu', final_activation = 'tanh', 
                                         output2_dim = 1)
 
 model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
@@ -115,20 +115,20 @@ model2.create_rm_model(alpha = alpha)
 
 #Create NN models for MG data
 train_path_seed = None
-N_MG_samples = int(n*(1/T)*10 - n + 1) # 5 years of data with n samples in T time.
-n_MG_models = 10
-beta = 10
+N_MG_samples = int(n*(1/T)*2 - n + 1) # 5 years of data with n samples in T time.
+n_MG_models = 8
+betas = [10] * n_MG_models
+final_activations = [None] * (n_MG_models // 2) + ["tanh"] * (n_MG_models // 2)
+
 MGs = []
 MG_models = []
 best_model_name_MGs = []
 MG_model_names = ["NN CVaR MG{}".format(i) for i in range(n_MG_models)]
 MG_train_losses = []
 
-final_activations = ["tanh"] * n_MG_models
-
 for i in range(n_MG_models):
     # create MG
-    MGs.append(create_MG(N_MG_samples, beta = beta, seed = train_path_seed))
+    MGs.append(create_MG(N_MG_samples, beta = betas[i], seed = train_path_seed))
     
     #create MG model
     tmp_model_MG = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
