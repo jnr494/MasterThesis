@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Apr 14 12:02:29 2021
+Created on Wed May  5 14:55:27 2021
 
 @author: mrgna
 """
-
-#VAE Experiment 1 Black Scholes with 1 asset w/wo transaction costs
 
 import os
 import sys
@@ -15,351 +13,247 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
+import gc
 
-import BlackScholesModel
 import MarketGenerator
+import BlackScholesModel
+import KolmogorovSmirnovTest
 
-import StandardNNModel
-import OptionClass
-import HedgeEngineClass
-import helper_functions
 
-n = 20 
-rate = 0.01
-rate_change = 0
+n = 20
 T = 1/12
+dt = T / n
+cond_n = 0
 
-alpha = 0.95 #confidence level for CVaR
+s0 = 1
+mu = 0.05
+sigma1 = 0.3
+sigma2 = 0.3
+rate = 0.01
 
-#Create stock model
-S0 = 1
+bs_model = BlackScholesModel.BlackScholesModel(s0, mu, sigma1, np.ones((1,1)), rate, dt)
 
-train_models = True
+n_samples = 1000
+real_decoder = True
+alpha, beta = (0.9, 0)
+layers_units = [40]
+cheat = False
 
-exp_nr = 0
+MG = MarketGenerator.MarketGenerator(bs_model, n, cond_n)
+MG.create_vae(latent_dim = n, layers_units=layers_units, alpha = alpha, beta = beta, real_decoder= real_decoder)
+MG.create_training_path(n_samples, overlap = True, seed = None, cheat = cheat)
+MG.train_vae(epochs = 500, batch_size = 128, lrs = [0.01,0.0001,0.00001], best_model_name = None)
 
-#Exp 2.x settings
-if exp_nr == 0:
-    tc = 0
-
-#Create model for underlying
-n_assets = 1
-mu = np.array([0.05])
-sigma = np.array([0.3])
-
-s_model = BlackScholesModel.BlackScholesModel(S0, mu, sigma, np.ones((1,1)), rate, T / n)
-
-#Setup call option with strike 1
-units = [1]
-options = [OptionClass.Option("call",[S0,T],0)]
-option_por = OptionClass.OptionPortfolio(options,units)
-
-#Option por
-option_price = s_model.init_option(option_por)
-
-#Create sample paths 
-N = 18
-n_samples = 2**N
-
-np.random.seed(69)
-x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_por)
-bank_hist, rate_hist = (s_model.bank_hist, s_model.rate_hist)
-
-#Create function to create MG and MG-samples
-
-def create_MG(N, alpha = 0.2, beta = 0, seed = None, plot = True):
-    MG = MarketGenerator.MarketGenerator(s_model, n)
-    MG.create_vae(latent_dim = n, layers_units=[3*n], alpha = alpha, beta = beta)
-    MG.create_training_path(N, overlap = True, seed = seed)
-    MG.train_vae()
+if cheat is False:
+    original_train_path = np.squeeze(bs_model.spot_hist)
+    p_len = len(original_train_path)
+    times = np.linspace(0, (p_len - 1) * dt, p_len)
     
-    if plot is True:
-        MG.qq_plot_fit()
-        MG.plot_generated_paths(100)
-        
-    return MG
-
-def generate_MG_data(MG, n_samples):
-    MG.generate_paths(n_samples,save = True)
-    x_MG, y_MG, _ = helper_functions.generate_dataset_from_MG(MG, bank_hist, rate_hist, option_por)
+    plt.plot(times,original_train_path, label = "Black-Scholes path")
+    plt.xlabel("t")
+    plt.legend()
+    plt.savefig("black_scholes_path_nocheat.eps", bbox_inches='tight')
+    plt.show()
     
-    return x_MG, y_MG
+    MG.create_training_path(n_samples, overlap = True, seed = None, cheat = True)
 
-############
-## NN models
-############
+training_paths = MG.training_paths
 
-n_layers = 4 #4
-n_units = 5 #5
-tf.random.set_seed(69)
+#get cond
+cond = MG.cond
 
+#create MG paths
+k = 20000 // n_samples
+tmp_cond = np.repeat(cond,k,axis = 0) if cond is not None else None 
+mg_paths = MG.generate_paths(n_samples*k, cond = tmp_cond, save = False, 
+                             std = 1, mean = 0, real_decoder = real_decoder)
 
-#Create NN model with rm
-model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
-                                        n_layers = n_layers, n_units = n_units, 
-                                        activation = 'elu', final_activation = None, 
-                                        output2_dim = 1)
+###############################Run 1st comparrison    
+pc = KolmogorovSmirnovTest.PathComparator(training_paths,mg_paths,T, ['Black Scholes','VAE'])
+pc.run_comparrison(plot = False)
 
-model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
+####Plots
 
-model.create_rm_model(alpha = alpha)
+#plot training paths and MG paths
+no_of_plotted_paths = 100
 
-model2 = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
-                                        n_layers = n_layers, n_units = n_units, 
-                                        activation = 'elu', final_activation = 'tanh', 
-                                        output2_dim = 1)
-
-model2.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
-
-model2.create_rm_model(alpha = alpha)
-
-#Create NN models for MG data
-train_path_seed = None
-N_MG_samples = int(n*(1/T)*2 - n + 1) # 5 years of data with n samples in T time.
-n_MG_models = 8
-betas = [10] * n_MG_models
-final_activations = [None] * (n_MG_models // 2) + ["tanh"] * (n_MG_models // 2)
-
-MGs = []
-MG_models = []
-best_model_name_MGs = []
-MG_model_names = ["NN CVaR MG{}".format(i) for i in range(n_MG_models)]
-MG_train_losses = []
-
-for i in range(n_MG_models):
-    # create MG
-    MGs.append(create_MG(N_MG_samples, beta = betas[i], seed = train_path_seed))
-    
-    #create MG model
-    tmp_model_MG = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
-                                            n_layers = n_layers, n_units = n_units, 
-                                            activation = 'elu', final_activation = final_activations[i], 
-                                            output2_dim = 1)
-    tmp_model_MG.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0)
-    tmp_model_MG.create_rm_model(alpha = alpha)
-    MG_models.append(tmp_model_MG)
-    
-    best_model_name_MGs.append("best_model_rm_MG{}_{}.hdf5".format(i, exp_nr))
-    
-#Training models
-best_model_name = "best_model_rm_normal_{}.hdf5".format(exp_nr)
-best_model_name2 = "best_model2_rm_normal_{}.hdf5".format(exp_nr)
-
-
-if train_models is True:
-
-    #train CVaR model   
-    model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name)
-    model2.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
-   
-    #train MG CVaR model
-    for MG, MG_model, name in zip(MGs, MG_models, best_model_name_MGs):
-        tmp_x_MG, _ = generate_MG_data(MG, n_samples)
-        MG_model.train_rm_model(tmp_x_MG, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = name)
-        
-
-model.model_rm.load_weights(best_model_name)
-model2.model_rm.load_weights(best_model_name2)
-for model_MG, name in zip(MG_models,best_model_name_MGs):
-    model_MG.model_rm.load_weights(name)  
-
-#Look at RM-cvar prediction and empirical cvar
-test = model.model_rm.predict(x)
-print('model w:', test[0,1])
-print('model_rm cvar:',model.get_J(x))
-
-#Test CVAR network
-test1 = - model.model.predict(x) 
-print('emp cvar (in sample):',np.mean(test1[np.quantile(test1,alpha) <= test1]))
-
-cvar = lambda w: w + np.mean(np.maximum(test1 - w,0) / (1- alpha))
-xs = np.linspace(0,option_price*2,10000)
-plt.plot(xs, [cvar(x) for x in xs])
+plt.plot(pc.times, mg_paths[:no_of_plotted_paths,:].T)
+plt.ylim((0.75,1.35))
+plt.xlabel("t")
+plt.savefig("example_paths_MG_{}_{}.eps".format(cheat, beta), bbox_inches='tight')
 plt.show()
-print('emp cvar2 (in sample):',np.min([cvar(x) for x in xs]))
-print('w:',xs[np.argmin([cvar(x) for x in xs])])
 
-#Find zero cvar init_pf
-init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
+plt.plot(pc.times, training_paths[:no_of_plotted_paths,:].T)
+plt.ylim((0.75,1.35))
+plt.xlabel("t")
+plt.savefig("example_paths_BS_{}_{}.eps".format(cheat, beta), bbox_inches='tight')
+plt.show()
 
-#Hedge simulations with fitted model
-init_pf = option_price
+#Plot means
+[plt.plot(pc.times,m, ls, label = l) for m, l, ls in zip(pc.means, pc.names,['-','--'])]
+plt.legend()
+plt.xlabel("t")
+plt.savefig("vae1_means_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show()  
 
-N_hedge_samples = 100000
+#Plot std
+[plt.plot(pc.times,s, ls, label = l) for s, l, ls in zip(pc.stds, pc.names,['-','--'])]
+plt.legend()
+plt.xlabel("t")
+plt.savefig("vae1_stds_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show() 
 
-#create portfolios
-models = [s_model, model, model2] + MG_models
-model_names = ["Analytical", "NN CVaR Ordinary", "NN CVAr Ordinary2"] + MG_model_names
+#Plot correlation
+c_min, c_max = (-0.1,0.1)
+[plt.plot(pc.lags, c, ls, label = l) for c, l, ls in zip(pc.corrs, pc.names,['-','--'])]
+plt.legend()
+plt.xlabel("Lag")
+plt.ylim((c_min,c_max))
+plt.savefig("vae1_corrs_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show() 
 
-#models = [s_model]
-#model_names = [run]
+#Plot abs correlation
+c_min, c_max = (-0.1,0.1)
+[plt.plot(pc.lags,c, ls, label = l) for c, l, ls in zip(pc.abs_corrs, pc.names,['-','--'])]
+plt.legend()
+plt.xlabel("Lag")
+plt.ylim((c_min,c_max))
+plt.savefig("vae1_abs_corrs_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show() 
 
-#create hedge experiment engine
-np.random.seed(420)
-hedge_engine = HedgeEngineClass.HedgeEngineClass(n, s_model, models, option_por)
+#Plot qq
+plt.scatter(pc.quantiles[0], pc.quantiles[1], s = 5)
+plt.plot(pc.quantiles[0][[0,-1]],pc.quantiles[0][[0,-1]],c='k')
+plt.xlabel("BS quantiles")
+plt.ylabel("VAE quantiles")
+plt.savefig("vae1_qq_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show()
 
-#run hedge experiment
-np.random.seed(69)
-hedge_engine.run_hedge_experiment(N_hedge_samples, init_pf, tc)
+#Plot ecdf for T
+[plt.plot(pc.ecdf_ranges[-1],e, ls, label = l) for e, l, ls in zip(pc.ecdf_saved[-1], pc.names,['-','--'])]
+plt.legend()
+plt.xlabel("spot")
+plt.savefig("vae1_ecdf_T_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show()
 
-pf_values = hedge_engine.pf_values
-hedge_spots = hedge_engine.hedge_spots
-spot_hist = hedge_engine.spot_hist
-option_values = hedge_engine.option_values
-Pnl = hedge_engine.Pnl_disc
-hs_matrix = hedge_engine.hs_matrix
+#Plot KS pvalues
+plt.plot(pc.times[1:], pc.pvalues, label = "Kolmogorov-Smirnov p-values")
+plt.legend()
+plt.ylim((0,1))
+plt.xlabel("t")
+plt.savefig("vae1_ks_pvalues_{}_{}.eps".format(cheat, beta), bbox_inches = "tight")
+plt.show()
 
+####################### averages runs
+from tqdm import tqdm
 
-#################
-#Plots
-#################
+n_vaes = 10
 
-dpi = 500
+pcss = []
 
-if n_assets == 1:
-    #Plot of hedge accuracy
-    tmp_xs = np.linspace(0.5*S0,2*S0)
-    tmp_option_values = option_por.get_portfolio_payoff(tmp_xs[:,np.newaxis,np.newaxis])
-    
-    for pf_vals, name in zip(pf_values, model_names):
-        plt.plot(tmp_xs, tmp_option_values, label = 'Option payoff')
-        plt.scatter(hedge_spots,pf_vals, color = 'black', s = 2, label = "{} $PF_N$".format(name), alpha = 0.3)
-        plt.xlabel("$S_N$")
-        plt.legend()
-        #plt.title("Hedge Errors:" + name)
-        plt.savefig("MGexp1_{}_hedge_acc_{}.png".format(exp_nr, name), dpi = dpi, bbox_inches='tight')
-        plt.show()
-        plt.close()
+n_samples = 1000
+real_decoder = True
+alpha, beta = (0.9, 0)
+layers_units = [40]
+var_name2 = "beta"
+#var_name2 = "alpha"
+var_name = r"$\{}$".format(var_name2)
 
-if n_assets == 1:
-    for pnl, name in zip(Pnl, model_names):
-        plt.scatter(hedge_spots,pnl, color = "k", label = "{} PnL".format(name), s= 3, alpha = 0.2)
-        plt.legend()
-        plt.xlabel("$S_N$")
-        #plt.title("Pnl scatter:" + name)
-        plt.savefig("MGexp1_{}_model_pnl_{}.png".format(exp_nr, name), dpi = dpi, bbox_inches='tight')
-        plt.show()
-        plt.close()
-    
-#Plot hs from nn vs optimal
-for i in range(2):
-    for j in range(n_assets):
-        times = np.arange(n)/n
-        for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--","--"]):
-            plt.plot(times, hs_m[i,j,:], ls, label = name, lw = 2)
-        plt.legend()
-        plt.xlabel("time")
-        plt.ylabel("Units of $S$")
-        plt.savefig("MGexp1_{}_hs_sample_{}.eps".format(exp_nr,i), bbox_inches='tight')
-        plt.show()
-        plt.close()
+#var_name2 = "n_samples"
+#var_name = "training samples"
+
+betas = [0,10,100]
+alphas = [0.8,0.9,0.99]
+n_sampless = [100,250,1000]
+indep_test_paths = True
+cheat = False
+
+var_copy = betas
+
+#for n_samples in n_sampless:
+#for alpha in alphas:
+for beta in betas:
+    tmp_pcs = []
+    for i in tqdm(range(n_vaes)):
+        print("alpha, beta, samples:",alpha,beta, n_samples)
+        #Creat MG and train
+        tmp_MG = MarketGenerator.MarketGenerator(bs_model, n, cond_n)
+        tmp_MG.create_vae(latent_dim = n, layers_units=layers_units, alpha = alpha, beta = beta, real_decoder= real_decoder)
+        tmp_MG.create_training_path(n_samples, overlap = True, seed = None, cheat = True)
+        tmp_MG.train_vae(epochs = 500, batch_size = 128, lrs = [0.01,0.0001,0.00001], verbose = 0, best_model_name = None)
         
-#Plot hs at some time over different spots
-time = 0.5*T
-time_idx = int(np.round(time / s_model.dt , 6))
-if n_assets == 1:
-    tmp_spots = np.arange(60,180)/100*s_model.S0
-    tmp_spots_tilde = tmp_spots * np.exp(- rate * time)
+        #Get paths
+        if indep_test_paths is True:
+            tmp_MG.create_training_path(1000, overlap = True, seed = None, cheat = cheat)
+            
+        tmp_training_paths = tmp_MG.training_paths
+        
+        tmp_mg_paths = tmp_MG.generate_paths(20000, cond = None, save = False, 
+                                     std = 1, mean = 0, real_decoder = real_decoder)
+        
+        tmp_pc = KolmogorovSmirnovTest.PathComparator(tmp_training_paths,tmp_mg_paths,T, ['Black Scholes','VAE'])
+        tmp_pc.run_comparrison(plot = False)
+        tmp_pcs.append(tmp_pc)
+        
+        del tmp_MG
+        del tmp_training_paths
+        del tmp_mg_paths
+        
+        gc.collect()
+        tf.keras.backend.clear_session()
+        tf.compat.v1.reset_default_graph()
     
-    tmp_model_hs = s_model.get_optimal_hs(time,tmp_spots[:,np.newaxis])
-    plt.plot(tmp_spots, tmp_model_hs,
-             label = "{} hs".format(model_names[0]))
-     
-    current_hs = np.array([0.5])
-    current_pf = np.array([0.0])
-    min_spot = np.array(0)
-    spot_return = np.array(0)
-    for m, name in zip(models[1:], model_names[1:]):
-        plt.plot(np.arange(60,180)/100*s_model.S0,
-                 [m.get_hs(time, current_hs, current_pf, spot_tilde, rate, min_spot, spot_return) for spot_tilde in tmp_spots_tilde], 
-                 '--', label = "{} hs".format(name))
+    pcss.append(tmp_pcs)
     
-    hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)
-    plt.ylim(np.min(tmp_model_hs) - hs_range * 0.2, np.max(tmp_model_hs) + hs_range * 0.2)
-    plt.legend()
-    #plt.title("Holding in $S$ at time $t = {}$".format(time))
-    plt.xlabel("$S({})$".format(time))
-    plt.savefig("MGexp1_{}_hs_time_x.eps".format(exp_nr), bbox_inches='tight')
-    plt.show()
-    plt.close()
-
-#Plot pnls on bar chart
-for i in range(1,len(model_names)):
-    plt.hist(Pnl[0], bins = 100, label=model_names[0],alpha = 0.8, density = True)
-    plt.hist(Pnl[i], bins = 100, label=model_names[i], alpha = 0.5, density = True)
-    #plt.title('Out of sample Pnl distribution')
-    plt.legend()
-    plt.xlabel("PnL")
-    plt.savefig("MGexp1_{}_oos_pnldist_{}.png".format(exp_nr, model_names[i]), dpi = dpi, bbox_inches='tight')
-    plt.show()
-    plt.close()
-
-############
-#Calculations
-###########
-
-save_output = True
-folder_name = ""
-
-#Print outputs
-if save_output is True:
-    text_file = open(folder_name + "output MG exp 1_{}, hedge points {}, tc = {}, samples = 2_{}.txt".format(exp_nr,n,tc,N),"w")
-
-def print_overload(*args):
-    str_ = ''
-    for x in args:
-        str_ += " " + str(x)
-    str_ = str_[1:]
-    if save_output is True:
-        text_file.write(str_ + "\n")
-    print(str_)
-
-#option price and p0
-print_overload("Exp nr:",exp_nr)
-print_overload("hedge points {}, tc = {}, samples = 2**{}".format(n,tc,N))
-print_overload("Option price:", option_price)
-tmp_p0 = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
-print_overload("NN Ordinary p0:", tmp_p0, tmp_p0 / option_price * 100)
-tmp_p0 = model_MG.get_init_pf() + model_MG.get_J(x) * np.exp(-rate * T)
-print_overload("NN MG p0:", tmp_p0, tmp_p0 / option_price * 100)
 
 
-#Avg abs Pnl
-for pnl, name in zip(Pnl, model_names):
-    print_overload("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
-      '(',np.round(np.std(abs(pnl)) / np.sqrt(N_hedge_samples),8),')',
-      np.round(np.mean(abs(pnl))  / option_price * 100,5))
-
-#Avg squared Pnl
-for pnl, name in zip(Pnl, model_names):
-    print_overload("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8),
-    '(',np.round(np.std(pnl**2) / np.sqrt(N_hedge_samples),8),')')
-
-#Avg Pbl
-for pnl, name in zip(Pnl, model_names):
-    print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
-    '(', np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),')',
-      np.round(np.mean(pnl) / option_price * 100,5))
-
-#Calculate CVAR
-for pnl, name in zip(Pnl, model_names):
-    tmp_loss = - pnl
-    tmp_cvar = np.mean(tmp_loss[np.quantile(tmp_loss, alpha) <= tmp_loss])
-    print_overload('Out of sample CVAR{} ({}):'.format(alpha, name),tmp_cvar)
     
-#Turnover
-for por, name in zip(hedge_engine.ports, model_names):
-    tmp_turnover = np.mean(por.turnover, axis = 0)
-    tmp_turnover_std = np.std(por.turnover, axis = 0)
-    print_overload('Avg. Turnover ({})'.format(name), tmp_turnover,
-          '(',tmp_turnover_std / np.sqrt(N_hedge_samples),')')
+#KS plot
+for i, pcs in enumerate(pcss):
+    pvalues = [pc.pvalues for pc in pcs]
+    pvalues = np.vstack(pvalues)
     
-#Avg transaction costs
-for por, name in zip(hedge_engine.ports, model_names):
-    tmp_tc = np.mean(np.sum(por.tc_hist, axis = 1))
-    tmp_tc_std = np.std(np.sum(por.tc_hist, axis = 1))
-    print_overload('Avg. Transaction Costs ({})'.format(name), tmp_tc,
-          '(',tmp_tc_std / np.sqrt(N_hedge_samples),')')
+    pvalues_mean = np.mean(pvalues,axis = 0)
+    pvalues_std = np.std(pvalues, axis = 0)
     
-if save_output is True:
-    text_file.close()
+    conf_interval = np.vstack([pvalues_mean + c * 1.96 * pvalues_std / np.sqrt(n_vaes) for c in [-1.,1.]])
+    
+    plt.plot(pc.times[1:], pvalues_mean, label = r"{}={}".format(var_name, var_copy[i]), c = 'C{}'.format(i))
+    plt.plot(np.tile(pc.times[1:],(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i))
+    
+plt.ylim((0,1))
+plt.legend()
+plt.xlabel("t")
+plt.savefig("vae1_ks_avg_{}.eps".format(var_name2), bbox_inches = "tight" )
+plt.show()
+
+#corr plot
+for i, pcs in enumerate(pcss):
+    bs_corrs = np.mean(np.vstack([pc.corrs[0] for pc in pcs]), axis = 0)
+    mg_corrs = np.mean(np.vstack([pc.corrs[1] for pc in pcs]), axis = 0)
+    mg_corrs_std = np.std(np.vstack([pc.corrs[1] for pc in pcs]), axis = 0)
+    
+    conf_interval = np.vstack([mg_corrs + c * 1.96 * mg_corrs_std / np.sqrt(n_vaes) for c in [-1.,1.]])
+    
+    #plt.plot(pc.lags, bs_corrs)
+    plt.plot(pc.lags, mg_corrs, c = 'C{}'.format(i+1))
+    plt.plot(np.tile(pc.lags,(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
+plt.ylim((c_min,c_max))
+plt.show()
+
+#abs corr plot
+for i, pcs in enumerate(pcss):
+    bs_abs_corrs = np.mean(np.vstack([pc.abs_corrs[0] for pc in pcs]), axis = 0)
+    mg_abs_corrs = np.mean(np.vstack([pc.abs_corrs[1] for pc in pcs]), axis = 0)
+    mg_abs_corrs_std = np.std(np.vstack([pc.corrs[1] for pc in pcs]), axis = 0)
+    
+    conf_interval = np.vstack([mg_abs_corrs + c * 1.96 * mg_abs_corrs_std / np.sqrt(n_vaes) for c in [-1.,1.]])
+    
+    #plt.plot(pc.lags, bs_abs_corrs)
+    plt.plot(pc.lags, mg_abs_corrs, c = 'C{}'.format(i+1))
+    plt.plot(np.tile(pc.lags,(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
+plt.ylim((c_min,c_max))
+plt.xlabel("Lag")
+plt.show()
+
+

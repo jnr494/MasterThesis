@@ -13,35 +13,53 @@ import iisignature
 import BlackScholesModel
 
 
-def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None, cheat = False):
+def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None, cheat = False, cond_n = 0, cond_type = 0):
     if cheat is True:
         return generate_data_for_MG_cheat(model, n, N, plot, overlap, seed)
     
+    real_cond_n = cond_n
+    
+    if cond_type == 1:
+        cond_n = 0
+        
     print(overlap)
     np.random.seed(seed)
     model.reset_model(1)
     if overlap is True:
-        for _ in range(n+N-1):
+        for _ in range(cond_n + n + N-1):
             model.evolve_s_b()
     else:
-        for _ in range(n*N):
+        for _ in range((cond_n + n) * N):
             model.evolve_s_b()
         
     spots = model.spot_hist[0,0,:]
     plt.plot(spots)
     plt.show()
         
-    #log_returns = np.log(spots[1:] / spots[:-1])
-    log_returns = spots[1:] / spots[:-1] - 1
+    returns = spots[1:] / spots[:-1] - 1
     
     if overlap is True:
-        log_returns_data = np.zeros((N,n))
+        all_returns_data = np.zeros((N,cond_n+n))
         for i in range(N):
-            log_returns_data[i,:] = log_returns[i:(i+n)]
+            all_returns_data[i,:] = returns[i:(i+cond_n+n)]
     else:
-        log_returns_data = log_returns.reshape((N,n))
+        all_returns_data = returns.reshape((N,cond_n+n))
     
-    return log_returns_data
+    returns_data = all_returns_data[:,cond_n:]
+    
+    if real_cond_n > 0:
+        if cond_type == 0:
+            cond_data = all_returns_data[:,:cond_n]
+        elif cond_type == 1:
+            vols = model.spot_hist[0,1,:]
+            if overlap is True:
+                cond_data = vols[N:][:,np.newaxis]
+            else:
+                cond_data = vols[:-1].reshape((N,n))[:,:1]
+    else:
+        cond_data = None
+        
+    return returns_data, cond_data
 
 def generate_data_for_MG_cheat(model, n, N, plot = True, overlap = False, seed = None):
     print(overlap)
@@ -56,11 +74,11 @@ def generate_data_for_MG_cheat(model, n, N, plot = True, overlap = False, seed =
         
     returns = spots[:,1:] / spots[:,:-1] - 1
         
-    return returns
+    return returns, None
 
 def transform_data(data, minmax = True):
     if minmax is True:
-        scaler = MinMaxScaler()
+        scaler = MinMaxScaler((-1,1))
     else:
         scaler = StandardScaler()
     
@@ -69,12 +87,25 @@ def transform_data(data, minmax = True):
     data_norm = scaler.transform(data)
     return data_norm, scaler
     
-def sample_from_vae(decoder, n_samples, s0 = 1, seed = None, std = 1):
+def sample_from_vae(vae, n_samples, s0 = 1, cond = None, seed = None, std = 1, mean = 0, real_decoder = False):
     np.random.seed(seed)
-    latent_dim = decoder.layers[0].input_shape[0][1]
-    latent_sample = np.random.normal(size = (n_samples, latent_dim)) * std
-    latent_sample_decoded = decoder.predict(latent_sample)
-        
+    
+    latent_dim = vae.decoder.input_shape[1] - vae.cond_n
+    latent_sample = np.random.normal(size = (n_samples, latent_dim)) * std + mean
+    
+    if not cond is None:
+        decoder_input = np.hstack((latent_sample,cond))
+    else:
+        decoder_input = latent_sample
+    
+    latent_sample_decoded = vae.decoder.predict(decoder_input)
+
+    if real_decoder is True:
+        decoder_normals = np.random.normal(size = latent_sample_decoded.shape)
+        alpha = vae.alpha
+        c = (1-alpha) / alpha
+        latent_sample_decoded += np.sqrt(c) * decoder_normals
+    
     return latent_sample_decoded
     
 def convert_log_returns_to_paths(s0, log_returns):

@@ -35,9 +35,26 @@ class SampleNormalsLike(layers.Layer):
         epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
         return epsilon
 
+#Momemt model
+def create_moment_model(input_dim,output_dim, layers_units = [3,3,3,3], activation = "elu"):     
+    inputs = keras.Input(shape=(input_dim,))
+    
+    x = layers.Dense(layers_units[0], activation = activation)(inputs)
+    
+    if len(layers_units) > 1:
+        for units in layers_units[1:]:
+            x = layers.Dense(units, activation = activation)(x)
+    
+    outputs = layers.Dense(output_dim, name="output")(x)
+    mm_model = keras.Model(inputs, outputs)
+    mm_model.summary()
+    
+    return mm_model
+
 #Encoder
-def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation = "elu"):
-    encoder_inputs = keras.Input(shape=(input_dim,))
+def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation = "elu", cond_dim = 0):
+    
+    encoder_inputs = keras.Input(shape=(input_dim + cond_dim,))
     
     x = layers.Dense(layers_units[0], activation = activation)(encoder_inputs)
     
@@ -54,20 +71,35 @@ def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation 
     return encoder
 
 #Decoder
-def create_decoder(output_dim, latent_dim, layers_units, activation = "elu", final_activation = "sigmoid"):
-    latent_inputs = keras.Input(shape=(latent_dim,))
+def create_decoder(output_dim, latent_dim, layers_units, activation = "elu", final_activation = None, cond_dim = 0):
     
-    x = layers.Dense(layers_units[0], activation = activation)(latent_inputs)
+    latent_cond_inputs = keras.Input(shape=(latent_dim + cond_dim,))
+
+    x = layers.Dense(layers_units[0], activation = activation)(latent_cond_inputs)
     
     if len(layers_units) > 1:
         for units in layers_units[1:]:
             x = layers.Dense(units, activation = activation)(x)
             
     decoder_outputs = layers.Dense(output_dim, activation = final_activation)(x)
-    decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
+    decoder = keras.Model(latent_cond_inputs, decoder_outputs, name="decoder")
     decoder.summary()
     
     return decoder
+
+def create_real_decoder(decoder, c):
+    latent_cond_inputs = keras.Input(shape=(decoder.input_shape[1],))
+        
+    decoder_outputs = decoder(latent_cond_inputs)
+    
+    batch, dim  = tf.shape(decoder_outputs)
+    normals = tf.keras.backend.random_normal(shape=(batch, dim))
+    
+    real_decoder_outputs = decoder_outputs + tf.math.sqrt(c) * normals
+    real_decoder = keras.Model(latent_cond_inputs, real_decoder_outputs, name="real_decoder")
+    real_decoder.summary()
+    
+    return real_decoder
 
 def calculate_cov_lag(x,lag):
     lead_x = x[:,lag:]
@@ -85,12 +117,16 @@ def calculate_cov_loss(x,y,lag):
     
 #VAE Model
 class VAE(keras.Model):
-    def __init__(self, encoder, decoder, alpha = 0.2, beta = 0, **kwargs):
+    def __init__(self, encoder, decoder,real_decoder, alpha = 0.9, beta = 0, gamma = 0, cond_type = 0, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
         self.decoder = decoder
+        
+        self.real_decoder = real_decoder
+        
         self.alpha = alpha
         self.beta = beta
+        self.gamma = gamma
         
         self.sample_normals_like = SampleNormalsLike()
         
@@ -102,8 +138,17 @@ class VAE(keras.Model):
         self.std_loss_tracker = keras.metrics.Mean(name="std_loss")
         self.cov_loss_tracker = keras.metrics.Mean(name="cov_loss")
         self.mean_loss_tracker = keras.metrics.Mean(name="mean_loss")
+        self.mm_loss_tracker = keras.metrics.Mean(name="mm_loss")
+        self.cmm_loss_tracker = keras.metrics.Mean(name="cmm_loss")
         
         self.decoder_output_dim = self.decoder.output_shape[1]
+        self.encoder_input_dim = self.encoder.input_shape[1]
+        
+        self.encoder_decoder_trainable_w = self.encoder.trainable_weights + self.decoder.trainable_weights
+        
+        self.cond_n = self.encoder_input_dim - self.decoder_output_dim
+        self.cond_type = cond_type
+        self.cond_bool = self.cond_n > 0
         
     @property
     def metrics(self):
@@ -113,24 +158,51 @@ class VAE(keras.Model):
             self.kl_loss_tracker,
             self.std_loss_tracker,
             self.cov_loss_tracker,
-            self.mean_loss_tracker
+            self.mean_loss_tracker,
+            self.mm_loss_tracker,
+            self.cmm_loss_tracker
         ]
 
     def train_step(self, data):
-        data_x, data_y = data
+        data_cond, data_y = data
+        
+        if self.cond_bool is True:
+            data_x = tf.concat([data_y,data_cond], axis = 1)
+        else:
+            data_x = data_y
+                     
         with tf.GradientTape() as tape:
             
+            #repeats = tf.constant([10,1], tf.int32)
+            #data_x = tf.tile(data_x, repeats)
+            #data_cond = tf.tile(data_cond, repeats)
+            #data_y = tf.tile(data_y, repeats)
+            
             z_mean, z_log_var, z = self.encoder(data_x)
-            #reconstruction
-            reconstruction = self.decoder(z)
-            reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.math.squared_difference(data_y, reconstruction), 1))
+            #reconstruction1 and 2
+            if self.cond_bool is True:
+                z1 = tf.concat([z,data_cond],axis = 1)
+                z2 = tf.concat([self.sample_normals_like(z_mean),data_cond],axis = 1)
+            else:
+                z1 = z
+                z2 = self.sample_normals_like(z_mean)
+               
+            reconstruction = self.decoder(z1)
+            reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(data_y - reconstruction), 1))
+            
             #kl
-            kl_loss = tf.reduce_mean(-0.5 * tf.reduce_sum(1. + z_log_var - tf.square(z_mean) - tf.exp(z_log_var), 1))
+            kl_loss = tf.reduce_mean(tf.reduce_sum(tf.square(z_mean) + tf.exp(z_log_var) - 1. - z_log_var, 1))
+            
+            mm_loss = 0
+            mean_loss = 0
+            std_loss = 0 
+            cov_loss = 0
+            cmm_loss = 0
             
             #std and mean loss
-            reconstruction2 = self.decoder(self.sample_normals_like(z_mean))
+            reconstruction2 = self.real_decoder(z2) #!!!!!!!
             tmp_reconstruction = reconstruction2
-            
+             
             std_diff = tf.math.reduce_std(tmp_reconstruction,0) - tf.math.reduce_std(data_y,0)
             std_loss = tf.reduce_mean(tf.math.abs(std_diff))
             
@@ -138,34 +210,65 @@ class VAE(keras.Model):
             mean_loss = tf.reduce_mean(tf.math.abs(mean_diff))
          
             #covariance
-            lags = self.decoder_output_dim - 1
-            cov_loss = 0
-            for lag in range(1,lags+1): 
-                cov_loss += (calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag) + \
-                            calculate_cov_loss(data_y, tmp_reconstruction, lag)) / lag
+            if self.cond_bool is False:
+                lags = self.decoder_output_dim - 1
+                cov_loss = 0
+                for lag in range(1,lags+1): 
+                    cov_loss += (calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag) + \
+                                calculate_cov_loss(data_y, tmp_reconstruction, lag)) / lag
+            else:
+                if self.cond_type == 0:
+                    lags = min([self.cond_n + self.decoder_output_dim - 1,20])
+                    cov_loss = 0
+                    for lag in range(1,lags+1): 
+                        tmp_cond = data_cond[:,-lag:]
+                        cond_recon = tf.concat([tmp_cond,reconstruction2], axis = 1)
+                        cond_y = tf.concat([tmp_cond,data_y], axis = 1)
+                        cov_loss += (calculate_cov_loss(tf.abs(cond_y), tf.abs(cond_recon), lag) + \
+                                    calculate_cov_loss(cond_y, cond_recon, lag)) / lag
+                elif self.cond_type == 1:
+                    reconstruction1 = self.real_decoder(z1)
+                    reconstruction_loss0 = tf.reduce_mean(tf.reduce_sum(tf.math.square(data_y - reconstruction1), 1))
+                    reconstruction_loss1 = tf.reduce_mean(tf.reduce_sum(tf.math.square(tf.square(data_y) - tf.square(reconstruction1)), 1))
+                    cmm_loss = reconstruction_loss1 + reconstruction_loss0
+                    
+                    lags = self.decoder_output_dim - 1
+                    cov_loss = 0
+                    for lag in range(1,lags+1): 
+                        cov_loss += (calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag) + \
+                                    calculate_cov_loss(data_y, tmp_reconstruction, lag)) / lag
+                                                         
             
-            print(reconstruction_loss.shape, kl_loss.shape, std_loss.shape)
+            mm_loss = mean_loss + std_loss + cov_loss 
+            
             #total loss
-            total_loss = (1 - self.alpha) * reconstruction_loss + self.alpha * kl_loss
-            total_loss += self.beta * (mean_loss + std_loss + cov_loss)
-            #total_loss = mean_loss + std_loss + cov_loss
-            print("Total loss shape",total_loss.shape)
+            total_loss = self.alpha * reconstruction_loss + (1 - self.alpha) * kl_loss
+            total_loss += self.beta * mm_loss
+            total_loss += self.gamma * cmm_loss
             
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+        #grads = tape.gradient(total_loss, self.trainable_weights)
+        #self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+        grads = tape.gradient(total_loss, self.encoder_decoder_trainable_w)
+        self.optimizer.apply_gradients(zip(grads, self.encoder_decoder_trainable_w))
+        
+        #Updated trackers
         self.total_loss_tracker.update_state(total_loss)
         self.reconstruction_loss_tracker.update_state(reconstruction_loss)
         self.kl_loss_tracker.update_state(kl_loss)
         self.std_loss_tracker.update_state(std_loss)
         self.cov_loss_tracker.update_state(cov_loss)
         self.mean_loss_tracker.update_state(mean_loss)
+        self.mm_loss_tracker.update_state(mm_loss)
+        self.cmm_loss_tracker.update_state(cmm_loss)
         return {
             "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "recon_loss": self.reconstruction_loss_tracker.result(),
             "kl_loss": self.kl_loss_tracker.result(),
             "std_loss": self.std_loss_tracker.result(),
             "cov_loss": self.cov_loss_tracker.result(),
-            "mean_loss": self.mean_loss_tracker.result()
+            "mean_loss": self.mean_loss_tracker.result(),
+            "mm_loss": self.mm_loss_tracker.result(),
+            "cmm_loss": self.cmm_loss_tracker.result()
         }
 
 def compile_vae(vae):
@@ -178,7 +281,9 @@ def train_vae(vae, data_y, data_x = None, epochs = 2500, batch_size = 32, learni
     er = keras.callbacks.EarlyStopping(monitor = 'loss', patience = patience[1], verbose = 1)
     
     callbacks = [er, mcp_save, reduce_lr]
-   #callbacks = [] 
+    
+    if best_model_name is None:
+        callbacks.pop(1)
     
     #train
     if data_x is None:
@@ -188,6 +293,10 @@ def train_vae(vae, data_y, data_x = None, epochs = 2500, batch_size = 32, learni
     history = vae.fit(x = data_x, y = data_y, epochs = epochs, batch_size = batch_size, callbacks = callbacks,
                       use_multiprocessing= True, workers = 8, verbose = verbose)
     return history
+
+def compile_and_train_mm_model(mm_model, x, y, epochs = 500, batch_size = 16, lr = 0.01, verbose = 2):
+    mm_model.compile(optimizer=keras.optimizers.Adam(lr), loss = "mse")
+    mm_model.fit(x, y, epochs = epochs, batch_size = batch_size, verbose = 2)
 
 #Plot latent space
 def plot_label_clusters(encoder, data, labels):

@@ -212,11 +212,13 @@ class HestonModel():
             normals1 = np.random.normal(size = (self.n,1))
             normals2 = np.random.normal(size = (self.n,1))
             
+            normals3 = self.rho * normals1 + np.sqrt(1 - self.rho**2) * normals2
+            
             tmp_pos_v = np.maximum(self.v,0)
             self.spot1 *= np.exp((self.mu - 0.5 * tmp_pos_v) * self.ddt + np.sqrt(tmp_pos_v * self.ddt) * normals1)
             
             #Evovle v
-            self.v += self.kappa * (self.theta - tmp_pos_v) * self.ddt + self.sigma * np.sqrt(tmp_pos_v * self.ddt) * normals2                   
+            self.v += self.kappa * (self.theta - tmp_pos_v) * self.ddt + self.sigma * np.sqrt(tmp_pos_v * self.ddt) * normals3                   
             
             self.time2 += self.ddt
         
@@ -363,13 +365,23 @@ class HestonModel():
         return self.get_optimal_hs(self.time, self.spot1, self.v)
     
 if __name__ == "__main__":
-    model = HestonModel(100, mu = 0.03, v0 = 0.09, kappa = 2, theta = 0.09, 
-                        sigma = 0.3, rho = -0.5, rate = 0.03, dt = 1/200)
+    model = HestonModel(100, mu = 0.03, v0 = 0.1, kappa = 5, theta = 0.1, 
+                        sigma = 0.3, rho = -0.9, rate = 0.03, dt = 1/200, ddt = 1/200)
+    model.use_v = True
     
     model.reset_model(int(1e5))
-    for i in range(400):
+    for i in range(100):
         model.evolve_s_b()
 
-    option_payoff = np.exp(- 0.03 * 2) * np.maximum(model.spot[:,0] - 50,0)
+    option_payoff = np.exp(- 0.03 * 0.5) * np.maximum(model.spot[:,0] - 70,0)
     option_price = np.mean(option_payoff)
+    print(option_price)
+    print(option_price + np.array([-1,1])*1.96*np.std(option_payoff) / np.sqrt(1e5))
     
+    import matplotlib.pyplot as plt
+    
+    plt.plot(model.spot_hist[0,0,:])
+
+    import BlackScholesFunctions
+    
+    print(BlackScholesFunctions.BScallprice(100, 0.1**0.5,0,1,70))
