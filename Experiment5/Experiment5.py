@@ -26,7 +26,7 @@ import nearPD
 import helper_functions
 
 n = 20 #60
-rate = 0 ###!!!!!!!!!!!!!
+rate = 0.02 ###!!!!!!!!!!!!!
 rate_change = 0
 T = 1/12
 
@@ -86,7 +86,7 @@ x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_po
 ############
 
 n_layers = 4
-n_units = 5
+n_units = 6
 tf.random.set_seed(69)
 
 
@@ -219,7 +219,7 @@ if n_assets == 1:
 #Plot hs from nn vs optimal
 for i in range(5):
     for j in range(n_assets):
-        times = np.arange(n)/n
+        times = np.arange(n)/n * T
         for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--","--"]):
             plt.plot(times, hs_m[i,j,:], ls, label = name, lw = 2)
         plt.legend()
@@ -300,8 +300,9 @@ print_overload("Option price:", option_price)
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
     print_overload("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
-      '(',np.round(np.std(abs(pnl)),5),')',
-      np.round(np.mean(abs(pnl))  / option_price * 100,5))
+                   '(',np.round(np.std(abs(pnl)),5),')',
+                   '((',np.round(np.std(abs(pnl)) / np.sqrt(N_hedge_samples),5),'))',
+                   np.round(np.mean(abs(pnl))  / option_price * 100,5))
 
 #Avg squared Pnl
 for pnl, name in zip(Pnl, model_names):
@@ -309,7 +310,9 @@ for pnl, name in zip(Pnl, model_names):
 
 #Avg Pnl
 for pnl, name in zip(Pnl, model_names):
-    print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8))
+    print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
+                   '(',np.round(np.std(pnl),5),')',
+                   '((',np.round(np.std(pnl) / np.sqrt(N_hedge_samples),5),'))')
 
 #Calculate CVAR high
 for pnl, name in zip(Pnl, model_names):

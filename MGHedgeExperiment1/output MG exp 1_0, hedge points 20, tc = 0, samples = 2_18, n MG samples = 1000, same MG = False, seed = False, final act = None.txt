@@ -1,0 +1,77 @@
+Exp nr: 0
+hedge points 20, tc = 0, samples = 2**18
+Option price: 0.03494232892990112
+NN Ordinary p0: 0.04860729054130214 139.1071861260728
+NN MG p0: 0.05166140467996843 147.84762854132578
+Avg abs PnL (Analytical): 0.00494 ( 0.00430092 ) (( 1.36e-05 )) 14.1275
+Avg abs PnL (NN CVaR Ordinary): 0.00578 ( 0.00447336 ) (( 1.415e-05 )) 16.53642
+Avg abs PnL (NN CVaR MG0): 0.00551 ( 0.00444032 ) (( 1.404e-05 )) 15.76248
+Avg abs PnL (NN CVaR MG1): 0.00534 ( 0.00439798 ) (( 1.391e-05 )) 15.28841
+Avg abs PnL (NN CVaR MG2): 0.00535 ( 0.0043986 ) (( 1.391e-05 )) 15.30555
+Avg abs PnL (NN CVaR MG3): 0.00535 ( 0.0044316 ) (( 1.401e-05 )) 15.30493
+Avg abs PnL (NN CVaR MG4): 0.00535 ( 0.00440256 ) (( 1.392e-05 )) 15.30129
+Avg abs PnL (NN CVaR MG5): 0.00533 ( 0.00437429 ) (( 1.383e-05 )) 15.2606
+Avg abs PnL (NN CVaR MG6): 0.00541 ( 0.00442889 ) (( 1.401e-05 )) 15.49336
+Avg abs PnL (NN CVaR MG7): 0.00543 ( 0.00440701 ) (( 1.394e-05 )) 15.53549
+Avg abs PnL (NN CVaR MG8): 0.00537 ( 0.00438603 ) (( 1.387e-05 )) 15.38079
+Avg abs PnL (NN CVaR MG9): 0.00537 ( 0.00439811 ) (( 1.391e-05 )) 15.38135
+Avg squared PnL (Analytical): 4.287e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR Ordinary): 5.34e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG0): 5.005e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG1): 4.788e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG2): 4.795e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG3): 4.824e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG4): 4.797e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG5): 4.757e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG6): 4.892e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG7): 4.889e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG8): 4.812e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG9): 4.823e-05 ( 2.5e-07 )
+Avg PnL (Analytical): 1.845e-05 ( 2.07e-05 ) (( 2.07e-05 )) 0.05279
+Avg PnL (NN CVaR Ordinary): 3.537e-05 ( 2.311e-05 ) (( 2.311e-05 )) 0.10121
+Avg PnL (NN CVaR MG0): 3.196e-05 ( 2.237e-05 ) (( 2.237e-05 )) 0.09146
+Avg PnL (NN CVaR MG1): 1.804e-05 ( 2.188e-05 ) (( 2.188e-05 )) 0.05162
+Avg PnL (NN CVaR MG2): 1.982e-05 ( 2.19e-05 ) (( 2.19e-05 )) 0.05671
+Avg PnL (NN CVaR MG3): 2.787e-05 ( 2.196e-05 ) (( 2.196e-05 )) 0.07976
+Avg PnL (NN CVaR MG4): 1.305e-05 ( 2.19e-05 ) (( 2.19e-05 )) 0.03733
+Avg PnL (NN CVaR MG5): 3.707e-05 ( 2.181e-05 ) (( 2.181e-05 )) 0.10608
+Avg PnL (NN CVaR MG6): 2.749e-05 ( 2.212e-05 ) (( 2.212e-05 )) 0.07866
+Avg PnL (NN CVaR MG7): 2.387e-05 ( 2.211e-05 ) (( 2.211e-05 )) 0.06832
+Avg PnL (NN CVaR MG8): 1.991e-05 ( 2.194e-05 ) (( 2.194e-05 )) 0.05697
+Avg PnL (NN CVaR MG9): 2.825e-05 ( 2.196e-05 ) (( 2.196e-05 )) 0.08085
+Out of sample CVAR0.95 (Analytical): 0.01532965140457033
+Out of sample CVAR0.95 (NN CVaR Ordinary): 0.013583875959157166
+Out of sample CVAR0.95 (NN CVaR MG0): 0.013952299047415738
+Out of sample CVAR0.95 (NN CVaR MG1): 0.014210924255333745
+Out of sample CVAR0.95 (NN CVaR MG2): 0.014261949675585948
+Out of sample CVAR0.95 (NN CVaR MG3): 0.014374935659233165
+Out of sample CVAR0.95 (NN CVaR MG4): 0.014187499146370061
+Out of sample CVAR0.95 (NN CVaR MG5): 0.01412979548907087
+Out of sample CVAR0.95 (NN CVaR MG6): 0.014018999860366924
+Out of sample CVAR0.95 (NN CVaR MG7): 0.014009004237987642
+Out of sample CVAR0.95 (NN CVaR MG8): 0.014092946250910439
+Out of sample CVAR0.95 (NN CVaR MG9): 0.01407452018650498
+Avg. Turnover (Analytical) [1.90140175] ( [0.00151433] )
+Avg. Turnover (NN CVaR Ordinary) [1.76302484] ( [0.00108601] )
+Avg. Turnover (NN CVaR MG0) [1.82588263] ( [0.00114671] )
+Avg. Turnover (NN CVaR MG1) [1.83729401] ( [0.00118996] )
+Avg. Turnover (NN CVaR MG2) [1.86558214] ( [0.00118112] )
+Avg. Turnover (NN CVaR MG3) [1.89767425] ( [0.00116333] )
+Avg. Turnover (NN CVaR MG4) [1.86320682] ( [0.00119731] )
+Avg. Turnover (NN CVaR MG5) [1.86936542] ( [0.00116673] )
+Avg. Turnover (NN CVaR MG6) [1.85537066] ( [0.00116157] )
+Avg. Turnover (NN CVaR MG7) [1.84092616] ( [0.00113066] )
+Avg. Turnover (NN CVaR MG8) [1.83963429] ( [0.00118969] )
+Avg. Turnover (NN CVaR MG9) [1.84710567] ( [0.00117095] )
+Avg. Transaction Costs (Analytical) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR Ordinary) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG0) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG1) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG2) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG3) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG4) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG5) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG6) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG7) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG8) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG9) 0.0 ( 0.0 )

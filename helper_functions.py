@@ -6,6 +6,7 @@ Created on Tue Mar 16 10:09:16 2021
 """
 
 import numpy as np
+import HestonModel
 
 class s_model_dummy():
     def __init__(self, spot_hist, bank_hist, rate_hist):
@@ -29,6 +30,10 @@ def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     min_spots = np.minimum.accumulate(spots,axis = -1)
     spot_returns = np.concatenate((np.ones_like(spots[...,0:1]), spots[...,1:-1] / (spots[...,:-2]+1e-8)), axis = -1)
     
+    if type(s_model) == HestonModel.HestonModel:
+        spot_returns = s_model.v_hist
+        spot_returns = np.append(spot_returns, np.zeros_like(spot_returns), axis = 1) 
+    
     #Get option payoffs from samples
     option_payoffs = option_por.get_portfolio_payoff(spots)[:,np.newaxis]
     
@@ -45,8 +50,12 @@ def generate_dataset(s_model, n_steps, n_samples, option_por, new = True):
     
     return x,y, banks
 
-def generate_dataset_from_MG(MG, bank_hist, rate_hist, option_por):
+def generate_dataset_from_MG(MG, bank_hist, rate_hist, option_por, n_assets = 1):
     spot_hist = MG.generated_paths[:,np.newaxis,:]
+    
+    if n_assets == 2:
+        spot_hist = np.concatenate((spot_hist, np.zeros_like(spot_hist)), axis = 1)
+    
     s_model_dummy_ = s_model_dummy(spot_hist, bank_hist, rate_hist)
     
     n_samples, _, n_steps = spot_hist.shape

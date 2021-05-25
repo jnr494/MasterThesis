@@ -21,20 +21,22 @@ class MarketGenerator():
         self.cond_type = cond_type #0: returns, 1: v(t), 2: ? but maybe realized vol
         self.train_history = []
         
-        if self.cond_n > 0:
-            self.mm2 = VAE.create_moment_model(cond_n,n)
-        else:
-            self.mm2 = None
+# =============================================================================
+#         if self.cond_n > 0:
+#             self.mm2 = VAE.create_moment_model(cond_n,n)
+#         else:
+#             self.mm2 = None
+# =============================================================================
         
     def create_vae(self, latent_dim = 10, layers_units = [20,10], alpha = 0.9, beta = 0, gamma = 0, 
-                   real_decoder = False):
+                   real_decoder = False, summary = True):
         
-        self.encoder = VAE.create_encoder(self.n, layers_units, latent_dim = latent_dim, cond_dim = self.cond_n)
+        self.encoder = VAE.create_encoder(self.n, layers_units, latent_dim = latent_dim, cond_dim = self.cond_n, summary=summary)
         self.decoder = VAE.create_decoder(self.n, latent_dim = latent_dim, layers_units = layers_units[::-1], 
-                                          final_activation = None, cond_dim = self.cond_n)
+                                          final_activation = None, cond_dim = self.cond_n, summary=summary)
         
         if real_decoder is True:
-            self.real_decoder = VAE.create_real_decoder(self.decoder, (1-alpha)/alpha)
+            self.real_decoder = VAE.create_real_decoder(self.decoder, (1-alpha)/alpha, summary = False)
         else:
             self.real_decoder = self.decoder
         
@@ -44,11 +46,12 @@ class MarketGenerator():
         #compile model
         VAE.compile_vae(self.vae)
     
-    def create_training_path(self, N, overlap = False, seed = None, cheat = False):
+    def create_training_path(self, N, overlap = False, seed = None, cheat = False, plot = True):
         self.log_returns, self.cond = MarketGeneratorHelpFunctions.generate_data_for_MG(self.s_model, self.n, N, 
                                                                                         overlap = overlap, seed = seed, 
                                                                                         cheat = cheat, cond_n = self.cond_n,
-                                                                                        cond_type = self.cond_type)
+                                                                                        cond_type = self.cond_type,
+                                                                                        plot = plot)
         self.training_paths = MarketGeneratorHelpFunctions.convert_log_returns_to_paths(self.s_model.S0, self.log_returns)
         
         #self.PCA = PCA(self.n)
@@ -60,7 +63,7 @@ class MarketGenerator():
         if self.cond_n > 0:
             self.cond_norm, self.cond_scaler = MarketGeneratorHelpFunctions.transform_data(self.cond, minmax = False)        
 
-    def train_vae(self, epochs = 2500, batch_size = 32, lrs = [0.001,0.001,0.0001,0.0001], verbose =2 , 
+    def train_vae(self, epochs = 2500, batch_size = 32, lrs = [0.001,0.001,0.0001,0.0001], verbose = 2 , 
                   best_model_name = "best_vae_model.hdf5"):
         data_y = self.log_returns_norm
         if self.cond_n == 0: 
@@ -78,7 +81,7 @@ class MarketGenerator():
         cond_norm = self.cond_scaler.transform(cond) if not cond is None else None
         sample_vae = MarketGeneratorHelpFunctions.sample_from_vae(self.vae, n_samples, cond = cond_norm, 
                                                                   seed = seed, std = std, mean = mean, real_decoder = real_decoder)
-        log_return_vae = self.scaler.inverse_transform(sample_vae)       
+        log_return_vae = self.scaler.inverse_transform(sample_vae)         
         
         if return_returns is True:
             return log_return_vae

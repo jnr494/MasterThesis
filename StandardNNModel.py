@@ -18,6 +18,8 @@ import gc
 import copy
 import matplotlib.pyplot as plt
 
+import HestonModel
+
 #from tensorflow.python.framework.ops import disable_eager_execution
 #disable_eager_execution()
 
@@ -372,7 +374,7 @@ class NN_simple_hedge():
 #         dataset = dataset.batch(batch_size = batch_size)
 # =============================================================================
         
-        self.model_rm.fit(x, y, epochs = epochs, batch_size = batch_size, verbose = 1, callbacks = callbacks, 
+        self.model_rm.fit(x, y, epochs = epochs, batch_size = batch_size, verbose = 2, callbacks = callbacks, 
                           use_multiprocessing= True, workers = 8)
         
     def get_hs(self, time, hs, pf_tilde, spot_tilde, rate, min_spot, spot_return):
@@ -399,9 +401,16 @@ class NN_simple_hedge():
     
     def get_current_optimal_hs(self, model, current_hs, current_pf):
         
+        if type(model) == HestonModel.HestonModel:
+            spot_return = np.array(model.v)
+            spot_return = np.append(spot_return,np.zeros_like(spot_return), axis = -1)
+        
+        else:
+            spot_return = np.array(model.spot_return)
+       
         return self.get_hs(model.time, current_hs, current_pf / model.bank[:,np.newaxis], 
                            model.spot / model.bank[:,np.newaxis], model.rate, 
-                           model.min_spot, model.spot_return)
+                           model.min_spot, spot_return)
     
     def get_init_pf(self):
         return self.model_full.predict(np.zeros((1,self.n_assets * (self.n+1) + self.n + 2 * self.n * self.n_assets + 2)))[-1][0,0]

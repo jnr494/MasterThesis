@@ -22,7 +22,7 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None,
     if cond_type == 1:
         cond_n = 0
         
-    print(overlap)
+    #print(overlap)
     np.random.seed(seed)
     model.reset_model(1)
     if overlap is True:
@@ -33,8 +33,10 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None,
             model.evolve_s_b()
         
     spots = model.spot_hist[0,0,:]
-    plt.plot(spots)
-    plt.show()
+    
+    if plot is True:
+        plt.plot(spots)
+        plt.show()
         
     returns = spots[1:] / spots[:-1] - 1
     
@@ -53,7 +55,7 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None,
         elif cond_type == 1:
             vols = model.spot_hist[0,1,:]
             if overlap is True:
-                cond_data = vols[N:][:,np.newaxis]
+                cond_data = vols[:-n][:,np.newaxis]
             else:
                 cond_data = vols[:-1].reshape((N,n))[:,:1]
     else:
@@ -62,15 +64,17 @@ def generate_data_for_MG(model, n, N, plot = True, overlap = False, seed = None,
     return returns_data, cond_data
 
 def generate_data_for_MG_cheat(model, n, N, plot = True, overlap = False, seed = None):
-    print(overlap)
+    #print(overlap)
     np.random.seed(seed)
     model.reset_model(N)
     for _ in range(n):
         model.evolve_s_b()
         
     spots = model.spot_hist[:,0,:]
-    plt.plot(spots[:100,:].T)
-    plt.show()
+    
+    if plot is True:
+        plt.plot(spots[:100,:].T)
+        plt.show()
         
     returns = spots[:,1:] / spots[:,:-1] - 1
         

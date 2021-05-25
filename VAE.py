@@ -52,7 +52,7 @@ def create_moment_model(input_dim,output_dim, layers_units = [3,3,3,3], activati
     return mm_model
 
 #Encoder
-def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation = "elu", cond_dim = 0):
+def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation = "elu", cond_dim = 0, summary = True):
     
     encoder_inputs = keras.Input(shape=(input_dim + cond_dim,))
     
@@ -66,12 +66,14 @@ def create_encoder(input_dim, layers_units = [10,5], latent_dim = 2, activation 
     z_log_var = layers.Dense(latent_dim, name="z_log_var")(x)
     z = Sampling()([z_mean, z_log_var])
     encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
-    encoder.summary()
+    
+    if summary is True:
+        encoder.summary()
     
     return encoder
 
 #Decoder
-def create_decoder(output_dim, latent_dim, layers_units, activation = "elu", final_activation = None, cond_dim = 0):
+def create_decoder(output_dim, latent_dim, layers_units, activation = "elu", final_activation = None, cond_dim = 0, summary = True):
     
     latent_cond_inputs = keras.Input(shape=(latent_dim + cond_dim,))
 
@@ -83,11 +85,13 @@ def create_decoder(output_dim, latent_dim, layers_units, activation = "elu", fin
             
     decoder_outputs = layers.Dense(output_dim, activation = final_activation)(x)
     decoder = keras.Model(latent_cond_inputs, decoder_outputs, name="decoder")
-    decoder.summary()
+    
+    if summary is True:
+        decoder.summary()
     
     return decoder
 
-def create_real_decoder(decoder, c):
+def create_real_decoder(decoder, c, summary = True):
     latent_cond_inputs = keras.Input(shape=(decoder.input_shape[1],))
         
     decoder_outputs = decoder(latent_cond_inputs)
@@ -97,7 +101,9 @@ def create_real_decoder(decoder, c):
     
     real_decoder_outputs = decoder_outputs + tf.math.sqrt(c) * normals
     real_decoder = keras.Model(latent_cond_inputs, real_decoder_outputs, name="real_decoder")
-    real_decoder.summary()
+    
+    if summary is True:
+        real_decoder.summary()
     
     return real_decoder
 
@@ -173,10 +179,12 @@ class VAE(keras.Model):
                      
         with tf.GradientTape() as tape:
             
-            #repeats = tf.constant([10,1], tf.int32)
-            #data_x = tf.tile(data_x, repeats)
-            #data_cond = tf.tile(data_cond, repeats)
-            #data_y = tf.tile(data_y, repeats)
+# =============================================================================
+#             repeats = tf.constant([10,1], tf.int32)
+#             data_x = tf.tile(data_x, repeats)
+#             data_cond = tf.tile(data_cond, repeats)
+#             data_y = tf.tile(data_y, repeats)
+# =============================================================================
             
             z_mean, z_log_var, z = self.encoder(data_x)
             #reconstruction1 and 2
@@ -230,15 +238,33 @@ class VAE(keras.Model):
                     reconstruction1 = self.real_decoder(z1)
                     reconstruction_loss0 = tf.reduce_mean(tf.reduce_sum(tf.math.square(data_y - reconstruction1), 1))
                     reconstruction_loss1 = tf.reduce_mean(tf.reduce_sum(tf.math.square(tf.square(data_y) - tf.square(reconstruction1)), 1))
-                    cmm_loss = reconstruction_loss1 + reconstruction_loss0
+                    
+                    #reconstruction_loss0 = tf.reduce_mean(tf.math.abs(data_y - reconstruction1))
+                    #reconstruction_loss1 = tf.reduce_mean(tf.math.abs(tf.square(data_y) - tf.square(reconstruction1)))
+                    
+                    
+                    cmm_loss = reconstruction_loss0 + reconstruction_loss1
+                    
+# =============================================================================
+#                     for lag in range(1,self.decoder_output_dim+1):
+#                         ylag1 = data_y[:,lag:] * data_y[:,:-lag]
+#                         reconlag1 = reconstruction1[:,lag:] * reconstruction1[:,:-lag]
+#                         reconstruction_loss2 = tf.reduce_mean(tf.reduce_sum(tf.math.square(ylag1 - reconlag1), 1))
+#                         
+#                         aylag1 = tf.abs(data_y[:,lag:]) * tf.abs(data_y[:,:-lag])
+#                         areconlag1 = tf.abs(reconstruction1[:,lag:]) * tf.abs(reconstruction1[:,:-lag])
+#                         reconstruction_loss2a = tf.reduce_mean(tf.reduce_sum(tf.math.square(aylag1 - areconlag1), 1))
+#                     
+#                         mm_loss += (reconstruction_loss2 + reconstruction_loss2a) / lag
+# =============================================================================
                     
                     lags = self.decoder_output_dim - 1
                     cov_loss = 0
                     for lag in range(1,lags+1): 
                         cov_loss += (calculate_cov_loss(tf.abs(data_y), tf.abs(tmp_reconstruction), lag) + \
                                     calculate_cov_loss(data_y, tmp_reconstruction, lag)) / lag
-                                                         
-            
+                    
+                    
             mm_loss = mean_loss + std_loss + cov_loss 
             
             #total loss

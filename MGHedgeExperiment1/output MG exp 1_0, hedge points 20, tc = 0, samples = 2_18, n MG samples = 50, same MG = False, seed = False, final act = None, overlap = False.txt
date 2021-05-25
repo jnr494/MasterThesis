@@ -1,0 +1,77 @@
+Exp nr: 0
+hedge points 20, tc = 0, samples = 2**18
+Option price: 0.03494232892990112
+NN Ordinary p0: 0.048575075011233065 139.0149898384879
+NN MG p0: 0.08579963053843409 245.54639935580528
+Avg abs PnL (Analytical): 0.00493648 ( 0.00430092 ) (( 1.36e-05 )) 14.1275
+Avg abs PnL (NN CVaR Ordinary): 0.00576635 ( 0.00447294 ) (( 1.414e-05 )) 16.50248
+Avg abs PnL (ANN CVaR MG): 0.00811047 ( 0.00704703 ) (( 2.228e-05 )) 23.211
+Avg abs PnL (ANN CVaR MG1): 0.01044072 ( 0.00889322 ) (( 2.812e-05 )) 29.87987
+Avg abs PnL (ANN CVaR MG2): 0.0152758 ( 0.0120259 ) (( 3.803e-05 )) 43.71719
+Avg abs PnL (ANN CVaR MG3): 0.01602539 ( 0.01225235 ) (( 3.875e-05 )) 45.8624
+Avg abs PnL (ANN CVaR MG4): 0.01426747 ( 0.0112329 ) (( 3.552e-05 )) 40.83149
+Avg abs PnL (ANN CVaR MG5): 0.01200338 ( 0.0151695 ) (( 4.797e-05 )) 34.35197
+Avg abs PnL (ANN CVaR MG6): 0.0261299 ( 0.01980232 ) (( 6.262e-05 )) 74.78007
+Avg abs PnL (ANN CVaR MG7): 0.03086366 ( 0.02409125 ) (( 7.618e-05 )) 88.32741
+Avg abs PnL (ANN CVaR MG8): 0.01287464 ( 0.01056637 ) (( 3.341e-05 )) 36.84539
+Avg abs PnL (ANN CVaR MG9): 0.0082163 ( 0.00675447 ) (( 2.136e-05 )) 23.51388
+Avg squared PnL (Analytical): 4.287e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR Ordinary): 5.326e-05 ( 2.5e-07 )
+Avg squared PnL (ANN CVaR MG): 0.00011544 ( 1.03e-06 )
+Avg squared PnL (ANN CVaR MG1): 0.0001881 ( 1.24e-06 )
+Avg squared PnL (ANN CVaR MG2): 0.00037797 ( 1.97e-06 )
+Avg squared PnL (ANN CVaR MG3): 0.00040693 ( 1.92e-06 )
+Avg squared PnL (ANN CVaR MG4): 0.00032974 ( 1.79e-06 )
+Avg squared PnL (ANN CVaR MG5): 0.00037419 ( 6.57e-06 )
+Avg squared PnL (ANN CVaR MG6): 0.0010749 ( 4.86e-06 )
+Avg squared PnL (ANN CVaR MG7): 0.00153295 ( 7.63e-06 )
+Avg squared PnL (ANN CVaR MG8): 0.0002774 ( 1.86e-06 )
+Avg squared PnL (ANN CVaR MG9): 0.00011313 ( 6.5e-07 )
+Avg PnL (Analytical): 1.845e-05 ( 0.00654724 ) (( 2.07e-05 )) 0.05279
+Avg PnL (NN CVaR Ordinary): 3.383e-05 ( 0.00729773 ) (( 2.308e-05 )) 0.09681
+Avg PnL (ANN CVaR MG): 3.929e-05 ( 0.01074424 ) (( 3.398e-05 )) 0.11244
+Avg PnL (ANN CVaR MG1): 0.00014454 ( 0.01371412 ) (( 4.337e-05 )) 0.41365
+Avg PnL (ANN CVaR MG2): -7.412e-05 ( 0.01944137 ) (( 6.148e-05 )) -0.21213
+Avg PnL (ANN CVaR MG3): -6.868e-05 ( 0.02017247 ) (( 6.379e-05 )) -0.19655
+Avg PnL (ANN CVaR MG4): -3.075e-05 ( 0.01815869 ) (( 5.742e-05 )) -0.08802
+Avg PnL (ANN CVaR MG5): 0.00011808 ( 0.01934376 ) (( 6.117e-05 )) 0.33794
+Avg PnL (ANN CVaR MG6): -5.299e-05 ( 0.03278568 ) (( 0.00010368 )) -0.15164
+Avg PnL (ANN CVaR MG7): -0.00033713 ( 0.0391515 ) (( 0.00012381 )) -0.96483
+Avg PnL (ANN CVaR MG8): 5.9e-07 ( 0.01665546 ) (( 5.267e-05 )) 0.0017
+Avg PnL (ANN CVaR MG9): 2.011e-05 ( 0.01063626 ) (( 3.363e-05 )) 0.05754
+Out of sample CVAR0.95 (Analytical): 0.01532965140457033
+Out of sample CVAR0.95 (NN CVaR Ordinary): 0.01359267679492793
+Out of sample CVAR0.95 (ANN CVaR MG): 0.02607458297741959
+Out of sample CVAR0.95 (ANN CVaR MG1): 0.03408589711638294
+Out of sample CVAR0.95 (ANN CVaR MG2): 0.04562622793708551
+Out of sample CVAR0.95 (ANN CVaR MG3): 0.04487830801977566
+Out of sample CVAR0.95 (ANN CVaR MG4): 0.04172238597964123
+Out of sample CVAR0.95 (ANN CVaR MG5): 0.05655594637571753
+Out of sample CVAR0.95 (ANN CVaR MG6): 0.07025985562618225
+Out of sample CVAR0.95 (ANN CVaR MG7): 0.08872614129727405
+Out of sample CVAR0.95 (ANN CVaR MG8): 0.039637662837100046
+Out of sample CVAR0.95 (ANN CVaR MG9): 0.02539358946335056
+Avg. Turnover (Analytical) [1.90140175] ( [0.00151433] )
+Avg. Turnover (NN CVaR Ordinary) [1.76323261] ( [0.00109599] )
+Avg. Turnover (ANN CVaR MG) [2.64944895] ( [0.001698] )
+Avg. Turnover (ANN CVaR MG1) [3.91750015] ( [0.00350154] )
+Avg. Turnover (ANN CVaR MG2) [4.80068928] ( [0.00225675] )
+Avg. Turnover (ANN CVaR MG3) [4.99810198] ( [0.0026535] )
+Avg. Turnover (ANN CVaR MG4) [4.56847278] ( [0.00196906] )
+Avg. Turnover (ANN CVaR MG5) [3.52001893] ( [0.00713671] )
+Avg. Turnover (ANN CVaR MG6) [8.07975711] ( [0.00204914] )
+Avg. Turnover (ANN CVaR MG7) [8.72627836] ( [0.00170022] )
+Avg. Turnover (ANN CVaR MG8) [4.29262607] ( [0.00214061] )
+Avg. Turnover (ANN CVaR MG9) [2.50900851] ( [0.00153439] )
+Avg. Transaction Costs (Analytical) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR Ordinary) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG1) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG2) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG3) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG4) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG5) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG6) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG7) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG8) 0.0 ( 0.0 )
+Avg. Transaction Costs (ANN CVaR MG9) 0.0 ( 0.0 )

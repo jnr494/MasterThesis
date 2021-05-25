@@ -42,7 +42,7 @@ heston_model.use_v = True
 
 n_samples = 1000
 real_decoder = True
-alpha, beta, gamma = (0.9, 0, 0)
+alpha, beta, gamma = (0.9, 0, 1)
 layers_units = [60]
 cheat = False
 
@@ -81,7 +81,7 @@ training_paths = org_training_paths
 tmp_cond = org_cond
 tmp_cond = np.repeat(tmp_cond,k // n_samples,axis = 0) if tmp_cond is not None else None 
 
-init_var = np.quantile(org_cond, 0.1)
+init_var = np.quantile(org_cond, 0.5)
 MG.cond_n = 0
 heston_model.v0 = init_var
 new_samples = 1000
@@ -134,7 +134,7 @@ plt.savefig("vae3_stds_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tight
 plt.show() 
 
 #Plot correlation
-c_min, c_max = (-0.1,0.15)
+c_min, c_max = (-0.02,0.05)
 [plt.plot(pc.lags, c, ls, label = l) for c, l, ls in zip(pc.corrs, pc.names,['-','--'])]
 plt.legend()
 plt.xlabel("Lag")
@@ -143,7 +143,7 @@ plt.savefig("vae3_corrs_comp_{}_{}.eps".format(cheat, beta), bbox_inches = "tigh
 plt.show() 
 
 #Plot abs correlation
-c_min, c_max = (-0.1,0.20)
+c_min, c_max = (-0.02,0.05)
 [plt.plot(pc.lags,c, ls, label = l) for c, l, ls in zip(pc.abs_corrs, pc.names,['-','--'])]
 plt.legend()
 plt.xlabel("Lag")
@@ -180,10 +180,11 @@ from tqdm import tqdm
 n_vaes = 5
 
 pcss = []
+init_vars = []
 
 n_samples = 1000
 real_decoder = True
-alpha, beta, gamma = (0.9, 10, 0)
+alpha, beta, gamma = (0.9, 0, 0)
 layers_units = [60]
 var_name2 = "gamma"
 #var_name2 = "alpha"
@@ -192,19 +193,23 @@ var_name = r"$\{}$".format(var_name2)
 #var_name2 = "n_samples"
 #var_name = "training samples"
 
-gammas = [0,0.1,1]
+gammas = [0,10,100]
 indep_test_paths = True
-quantiles = [0.1,0.4,0.6,0.9]
+quantiles = np.linspace(0.1,0.9,17)
+#quantiles = [0.1,0.4,0.6,0.9]
+
+init_vars = [[] for q in quantiles]
 
 var_copy = gammas
 for gamma in gammas:
     tmp_pcs = [[] for q in quantiles]
+    
     for i in tqdm(range(n_vaes)):
         print("alpha, beta, gamma, samples:",alpha,beta, gamma, n_samples)
         #Creat MG and train
         tmp_MG = MarketGenerator.MarketGenerator(heston_model, n, cond_n, cond_type)
         tmp_MG.create_vae(latent_dim = n, layers_units=layers_units, alpha = alpha, beta = beta, gamma = gamma, 
-                          real_decoder= real_decoder)
+                          real_decoder= real_decoder, summary = False)
         tmp_MG.create_training_path(n_samples, overlap = False, seed = None, cheat = False)
         tmp_MG.train_vae(epochs = 500, batch_size = 128, lrs = [0.01,0.0001,0.00001], verbose = 0, best_model_name = None)
         
@@ -216,7 +221,7 @@ for gamma in gammas:
             tmp_MG.cond_n = 0
             heston_model.v0 = init_var #change init var
             #Paths
-            tmp_MG.create_training_path(1000, overlap = False, seed = None, cheat = True)
+            tmp_MG.create_training_path(1000, overlap = False, seed = None, cheat = True, plot = False)
             tmp_training_paths = tmp_MG.training_paths   
             #print(gamma,i, tmp_training_paths)
             if tmp_training_paths[0,-1] == tmp_training_paths[1,-1]:
@@ -235,7 +240,9 @@ for gamma in gammas:
                                                           T, ['Black Scholes','VAE'])
             tmp_pc.run_comparrison(plot = False)
             tmp_pcs[q_idx].append(tmp_pc)
-        
+            
+            init_vars[q_idx].append(init_var)
+            
         del tmp_MG
         del tmp_training_paths
         del tmp_mg_paths
@@ -245,7 +252,6 @@ for gamma in gammas:
         tf.compat.v1.reset_default_graph()
     
     pcss.append(tmp_pcs)
-    
     
 #KS plot
 for q_idx, q in enumerate(quantiles):
@@ -265,12 +271,40 @@ for q_idx, q in enumerate(quantiles):
     plt.legend()
     plt.xlabel("t")
     plt.title("Quantile: {}".format(q))
-    plt.savefig("vae2_ks_avg_{}_q{}.eps".format(var_name2, int(q*100)), bbox_inches = "tight" )
+    #plt.savefig("vae3_ks_avg_{}_q{}.eps".format(var_name2, int(q*100)), bbox_inches = "tight" )
     plt.show()
 
+#Collect KS
+ks_means = [[] for _ in pcss]
+ks_stds = [[] for _ in pcss]
+for i, pcs in enumerate(pcss):
+    for q_idx, q in enumerate(quantiles):
+        pvalues = [pc.pvalues for pc in pcs[q_idx]]
+        pvalues = np.vstack(pvalues)
+        pvalues = np.mean(pvalues, axis = 1)
+        
+        pvalues_mean = np.mean(pvalues)
+        pvalues_std = np.std(pvalues)
+        
+        ks_means[i].append(pvalues_mean)
+        ks_stds[i].append(pvalues_std)
+
+for i, (m, s) in enumerate(zip(ks_means,ks_stds)):
+    plt.plot(quantiles, m, label = r"VAE, {}={}".format(var_name, var_copy[i]), c = 'C{}'.format(i+1))
+    
+    conf_interval = np.vstack([np.array(m) + c * 1.96 * np.array(s) / np.sqrt(n_vaes) for c in [-1.,1.]])
+    plt.plot(quantiles, conf_interval.T, '--', c = 'C{}'.format(i+1))
+plt.legend()
+plt.ylim((0,1))
+plt.xlabel(r"$\nu(0)$-quantile")
+#plt.savefig("vae3_ks_avg_{}_avgq.eps".format(var_name2), bbox_inches = "tight" )
+plt.show()
+    
 
 #corr plot
-q_idx = 1
+c_min, c_max = (-0.02,0.03)
+q_idx = 10
+q = np.round(quantiles[q_idx],2)
 bs_corrs = 0
 for i, pcs in enumerate(pcss):
     bs_corrs += np.mean(np.vstack([pc.corrs[0] for pc in pcs[q_idx]]), axis = 0) / len(pcss)
@@ -288,8 +322,9 @@ for i, pcs in enumerate(pcss):
     #plt.plot(np.tile(pc.lags,(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
 plt.ylim((c_min,c_max))
 plt.xlabel("Lag")
+plt.title("Quantile:{}".format(q))
 plt.legend()
-plt.savefig("vae2_corr_avg_{}.eps".format(var_name2), bbox_inches = "tight" )
+#plt.savefig("vae3_corr_avg_{}_q{}.eps".format(var_name2,q), bbox_inches = "tight" )
 plt.show()
 
 #abs corr plot
@@ -307,10 +342,14 @@ for i, pcs in enumerate(pcss):
     
     #plt.plot(pc.lags, bs_abs_corrs)
     plt.plot(pc.lags, mg_abs_corrs, c = 'C{}'.format(i+1), label = r"VAE, {}={}".format(var_name, var_copy[i]))
-    plt.plot(np.tile(pc.lags,(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
+    #plt.plot(np.tile(pc.lags,(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
 plt.ylim((c_min,c_max))
+plt.xlabel("Lag")
 plt.legend()
-plt.savefig("vae2_abscorr_avg_{}.eps".format(var_name2), bbox_inches = "tight" )
+plt.title("Quantile:{}".format(q))
+#plt.savefig("vae3_abscorr_avg_{}_q{}.eps".format(var_name2,q), bbox_inches = "tight" )
 plt.show()
 
-
+##
+var_quantiles = [np.round(np.mean(v),4) for v in init_vars]
+print(var_quantiles)

@@ -23,7 +23,7 @@ def hestoncallprice_old(s0, v0, kappa, theta, sigma, rho, r, T, K, greek = None)
     elif greek == "vega":
         tmp_greek = 4
     
-    grid_size = 20
+    grid_size = 30
     if len(s0) > 2*grid_size**2:
         min_s = np.min(s0)
         max_s = np.max(s0)
@@ -236,6 +236,7 @@ class HestonModel():
         self.spot_hist = np.append(self.spot_hist, self.spot[...,np.newaxis], -1)
         self.bank_hist = np.append(self.bank_hist, self.bank[...,np.newaxis], -1)
         self.rate_hist = np.append(self.rate_hist, self.rate[...,np.newaxis], -1)
+        self.v_hist = np.append(self.v_hist, self.v[...,np.newaxis], -1)
         
         #update min max
         self.min_spot = np.minimum(self.min_spot, self.spot)

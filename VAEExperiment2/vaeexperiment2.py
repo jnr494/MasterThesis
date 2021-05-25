@@ -41,7 +41,7 @@ heston_model.use_v = True
 
 n_samples = 1000
 real_decoder = True
-alpha, beta = (0.9, 10)
+alpha, beta = (0.9, 0)
 layers_units = [40]
 cheat = True
 
@@ -218,8 +218,8 @@ for i, pcs in enumerate(pcss):
     
     conf_interval = np.vstack([pvalues_mean + c * 1.96 * pvalues_std / np.sqrt(n_vaes) for c in [-1.,1.]])
     
-    plt.plot(pc.times[1:], pvalues_mean, label = r"VAE, {}={}".format(var_name, var_copy[i]), c = 'C{}'.format(i))
-    plt.plot(np.tile(pc.times[1:],(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i))
+    plt.plot(pc.times[1:], pvalues_mean, label = r"VAE, {}={}".format(var_name, var_copy[i]), c = 'C{}'.format(i+1))
+    plt.plot(np.tile(pc.times[1:],(2,1)).T, conf_interval.T ,'--', c = 'C{}'.format(i+1))
     
 plt.ylim((0,1))
 plt.legend()

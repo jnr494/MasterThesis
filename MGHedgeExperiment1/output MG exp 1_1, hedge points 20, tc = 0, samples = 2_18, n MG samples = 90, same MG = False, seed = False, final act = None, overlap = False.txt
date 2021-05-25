@@ -1,0 +1,23 @@
+Exp nr: 1
+hedge points 20, tc = 0, samples = 2**18
+Option price: 0.03494232892990112
+NN Ordinary p0: 0.04852358227374311 138.86762491157288
+NN MG p0: 0.060069751082676454 171.91112591030844
+Avg abs PnL (Analytical): 0.00493648 ( 0.00430092 ) (( 1.36e-05 )) 14.1275
+Avg abs PnL (NN CVaR Ordinary): 0.00576753 ( 0.00447817 ) (( 1.416e-05 )) 16.50586
+Avg abs PnL (NN CVaR MG0): 0.00608548 ( 0.00487371 ) (( 1.541e-05 )) 17.41579
+Avg squared PnL (Analytical): 4.287e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR Ordinary): 5.332e-05 ( 2.5e-07 )
+Avg squared PnL (NN CVaR MG0): 6.079e-05 ( 3e-07 )
+Avg PnL (Analytical): 1.845e-05 ( 0.00654724 ) (( 2.07e-05 )) 0.05279
+Avg PnL (NN CVaR Ordinary): 3.366e-05 ( 0.00730187 ) (( 2.309e-05 )) 0.09633
+Avg PnL (NN CVaR MG0): -1.072e-05 ( 0.00779654 ) (( 2.465e-05 )) -0.03067
+Out of sample CVAR0.95 (Analytical): 0.01532965140457033
+Out of sample CVAR0.95 (NN CVaR Ordinary): 0.013580772588418681
+Out of sample CVAR0.95 (NN CVaR MG0): 0.016995423289892977
+Avg. Turnover (Analytical) [1.90140175] ( [0.00151433] )
+Avg. Turnover (NN CVaR Ordinary) [1.76246676] ( [0.00109651] )
+Avg. Turnover (NN CVaR MG0) [2.1626492] ( [0.00116104] )
+Avg. Transaction Costs (Analytical) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR Ordinary) 0.0 ( 0.0 )
+Avg. Transaction Costs (NN CVaR MG0) 0.0 ( 0.0 )

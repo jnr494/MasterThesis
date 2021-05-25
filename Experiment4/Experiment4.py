@@ -26,7 +26,7 @@ import helper_functions
 
 n = 60 #20
 rate = 0
-T = 1/12
+T = 3/12
 
 alpha = 0.95 #confidence level for CVaR
 
@@ -35,7 +35,7 @@ S0 = 1
 
 run = "Heston"
 exp_nr = 2 ####### 
-train_models = True
+train_models = False
 
 #Exp 2.x settings
 if exp_nr == 0:
@@ -51,7 +51,7 @@ elif exp_nr == 2:
 if run == "Heston":
     np.random.seed(69)
     
-    s_model = HestonModel.HestonModel(S0, mu = 0.03, v0 = 0.2, kappa = 0.5, theta = 0.2, sigma = 0.5, 
+    s_model = HestonModel.HestonModel(S0, mu = 0.05, v0 = 0.1, kappa = 5, theta = 0.1, sigma = 1, 
                                       rho = -0.9, rate = rate, dt = T / n, ddt = 0.01, ignore_sa = ignore_sa)
     
     n_true_assets = s_model.n_true_assets
@@ -77,17 +77,17 @@ x, y, banks = helper_functions.generate_dataset(s_model, n, n_samples, option_po
 ############
 
 n_layers = 4
-n_units = 8
+n_units = 6
 tf.random.set_seed(69)
 
 #Create NN model with rm
 model = StandardNNModel.NN_simple_hedge(n_assets = n_assets, 
                                         n_layers = n_layers, n_units = n_units, 
                                         activation = 'elu', final_activation = None, 
-                                        output2_dim = 2)
+                                        output2_dim = 1)
 
 model.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = False, ignore_returns=False)
+                    ignore_rates = True, ignore_minmax = True, ignore_info = True, ignore_returns = True)
 
 model.create_rm_model(alpha = alpha)
 
@@ -97,7 +97,7 @@ model1 = StandardNNModel.NN_simple_hedge(n_assets = n_assets,
                                         output2_dim = 1)
 
 model1.create_model(n, rate = 0, dt = T / n, transaction_costs = tc, init_pf = 0, 
-                    ignore_rates = True, ignore_minmax = True, ignore_info = True, ignore_returns=True)
+                    ignore_rates = True, ignore_minmax = True, ignore_info = True, ignore_returns = False)
 
 model1.create_rm_model(alpha = alpha)
 
@@ -140,7 +140,7 @@ N_hedge_samples = 100000
 
 #create portfolios
 models = [s_model, model, model1]
-model_names = ["Analytical", "NN CVaR {} w memory".format(alpha), "NN CVaR {} raw".format(alpha)]
+model_names = ["Analytical", "ANN CVaR {} raw".format(alpha), "ANN CVaR {} w. v".format(alpha)]
 
 #models = [s_model]
 #model_names = [run]
@@ -194,13 +194,13 @@ for pnl, name in zip(Pnl, model_names):
 #Plot hs from nn vs optimal
 for i in range(2):
     for j in range(n_assets):
-        times = np.arange(n)/n
+        times = np.arange(n)/n * T
         for hs_m, name, ls in zip(hs_matrix, model_names, ["-","--","--"]):
             plt.plot(times, hs_m[i,j,:], ls, label = name, lw = 2)
         plt.legend()
         plt.xlabel("time")
         plt.ylabel("Units of $S$")
-        plt.savefig("ex4_{}_hs_sample_{}.eps".format(exp_nr,i), bbox_inches='tight')
+        plt.savefig("ex4_{}_hs_sample_{}_{}.eps".format(exp_nr,i,j), bbox_inches='tight')
         plt.show()
         plt.close()
         
@@ -249,13 +249,15 @@ for i in range(1,len(model_names)):
 
 #option price and p0
 print("Exp nr:",exp_nr)
-print("NN CVaR{} p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
+print("ANN CVaR{} raw p0:".format(alpha), model.get_init_pf() + model.get_J(x) * np.exp(-rate * T))
+print("ANN CVaR{} w v p0:".format(alpha), model1.get_init_pf() + model1.get_J(x) * np.exp(-rate * T))
 print("Option price:", option_price)
 
 #Avg abs Pnl
 for pnl, name in zip(Pnl, model_names):
     print("Avg abs PnL ({}):".format(name), np.round(np.mean(abs(pnl)),5), 
       '(',np.round(np.std(abs(pnl)),5),')',
+      '((',np.round(np.std(abs(pnl)),5) / np.sqrt(N_hedge_samples),'))',
       np.round(np.mean(abs(pnl))  / init_pf,5))
 
 #Avg squared Pnl
@@ -264,7 +266,8 @@ for pnl, name in zip(Pnl, model_names):
 
 #Avg Pbl
 for pnl, name in zip(Pnl, model_names):
-    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8))
+    print("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
+          '(',np.round(np.std(pnl),5),')',)
 
 #Calculate CVAR high
 for pnl, name in zip(Pnl, model_names):
@@ -275,7 +278,8 @@ for pnl, name in zip(Pnl, model_names):
 
 #Turnover
 for por, name in zip(hedge_engine.ports, model_names):
-    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0))
+    print('Avg. Turnover ({})'.format(name), np.mean(por.turnover, axis = 0),
+          '((',np.round(np.std(por.turnover, axis = 0),5) / np.sqrt(N_hedge_samples),'))')
     
 #Avg transaction costs
 for por, name in zip(hedge_engine.ports, model_names):
