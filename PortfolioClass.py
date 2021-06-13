@@ -40,7 +40,7 @@ class Portfolio():
     def rebalance(self, new_hs):
         hs_change = np.abs(self.hs - new_hs)
         tmp_tc = np.sum(hs_change * self.model.spot, axis = 1) * self.transaction_cost
-        self.tc_hist = np.append(self.tc_hist, tmp_tc[:,np.newaxis], 1)
+        self.tc_hist = np.append(self.tc_hist, (tmp_tc/ self.model.bank)[:,np.newaxis], 1)
         
         self.hs = new_hs
         self.hb = (self.pf_value - np.sum(self.hs * self.model.spot, axis = 1) - tmp_tc) / self.model.bank

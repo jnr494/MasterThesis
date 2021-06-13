@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 import gc
+import time
 
 import MarketGenerator
 import BlackScholesModel
@@ -42,7 +43,11 @@ cheat = False
 MG = MarketGenerator.MarketGenerator(bs_model, n, cond_n)
 MG.create_vae(latent_dim = n, layers_units=layers_units, alpha = alpha, beta = beta, real_decoder= real_decoder)
 MG.create_training_path(n_samples, overlap = True, seed = None, cheat = cheat)
+
+t0 = time.time()
 MG.train_vae(epochs = 500, batch_size = 128, lrs = [0.01,0.0001,0.00001], best_model_name = None)
+t1= time.time()
+print("Training time",t1-t0,"seconds")
 
 if cheat is False:
     original_train_path = np.squeeze(bs_model.spot_hist)

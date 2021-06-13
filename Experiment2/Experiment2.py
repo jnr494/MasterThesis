@@ -11,6 +11,7 @@ import os
 import sys
 sys.path.insert(1,os.path.dirname(os.getcwd()))
 
+import time
 import numpy as np 
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -28,7 +29,7 @@ import helper_functions
 n = 60 #60
 rate = 0.02
 rate_change = 0
-T = 1 #3/12
+T = 3/12
 
 alpha = 0.95 #confidence level for CVaR
 alpha1 = 0.5 #confidence level for CVaR as comparrison
@@ -39,7 +40,7 @@ S0 = 1
 run = "BS"
 train_models = True
 
-exp_nr = 3 ####### Set 0 for exp 2.0 and 1 for exp 2.1
+exp_nr = 1 ####### Set 0 for exp 2.0 and 1 for exp 2.1
 
 #Exp 2.x settings
 if exp_nr == 0:
@@ -158,9 +159,12 @@ if train_models is True:
     if not exp_nr == 2: 
         #train mse model2 
         model_mse2.train_model(x, y, batch_size = 1024, epochs = 100, patience = [5,11], learning_rate = 0.01, best_model_name = best_model_name12)
-        
+    
+    t0 = time.time()
     #train CVaR high model   
     model.train_rm_model(x, epochs = 100, batch_size = 1024, patience = [5,11], lr = 0.01, best_model_name = best_model_name2)
+    t1 = time.time()
+    print("Training time:",t1-t0,"seconds")
     
     if not exp_nr == 2:
         #train CVaR low model   
@@ -195,7 +199,7 @@ init_pf_nn = model.get_init_pf() + model.get_J(x) * np.exp(-rate * T)
 #Hedge simulations with fitted model
 init_pf = option_price
 
-N_hedge_samples = 100000
+N_hedge_samples = 50000
 
 #create portfolios
 models = [s_model, model_mse, model, model2, model_mse2]
@@ -258,7 +262,7 @@ if n_assets == 1:
 #Plot hs from nn vs optimal
 for i in range(2):
     for j in range(n_assets):
-        times = np.arange(n)/n
+        times = np.arange(n)/n * T
         for hs_m, name, ls in zip(hs_matrix[:-1], model_names[:-1], ["-","--","--"]):
             plt.plot(times, hs_m[i,j,:], ls, label = name, lw = 2)
         plt.legend()
@@ -277,16 +281,16 @@ if n_assets == 1:
     
     tmp_model_hs = s_model.get_optimal_hs(time,tmp_spots[:,np.newaxis])
     plt.plot(tmp_spots, tmp_model_hs,
-             label = "{} hs".format(model_names[0]))
+             label = "{}".format(model_names[0]))
      
     current_hs = np.array([0.5])
     current_pf = np.array([0.0])
     min_spot = np.array(0)
     spot_return = np.array(0)
-    for m, name in zip(models[1:-1], model_names[1:-1]):
+    for m, name in zip(models[1:-2], model_names[1:-2]):
         plt.plot(np.arange(60,180)/100*s_model.S0,
                  [m.get_hs(time, current_hs, current_pf, spot_tilde, rate, min_spot, spot_return) for spot_tilde in tmp_spots_tilde], 
-                 '--', label = "{} hs".format(name))
+                 '--', label = "{}".format(name))
     
     hs_range = np.max(tmp_model_hs) - np.min(tmp_model_hs)
     plt.ylim(np.min(tmp_model_hs) - hs_range * 0.2, np.max(tmp_model_hs) + hs_range * 0.2)
@@ -350,10 +354,11 @@ for pnl, name in zip(Pnl, model_names):
     print_overload("Avg squared PnL ({}):".format(name), np.round(np.mean(pnl**2),8),
     '(',np.round(np.std(pnl**2) / np.sqrt(N_hedge_samples),8),')')
 
-#Avg Pbl
+#Avg Pnl
 for pnl, name in zip(Pnl, model_names):
     print_overload("Avg PnL ({}):".format(name), np.round(np.mean(pnl),8),
-    '(', np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),')',
+    '(', np.round(np.std(pnl),8),')',              
+    '((', np.round(np.std(pnl) / np.sqrt(N_hedge_samples),8),'))',
       np.round(np.mean(pnl) / option_price * 100,5))
 
 #Calculate CVAR high
